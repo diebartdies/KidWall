@@ -1,0 +1,26 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <!-- Backpack body -->
+  <rect x="56" y="60" width="144" height="140" rx="36" fill="url(#bodyGradient)" stroke="#2D3E50" stroke-width="6"/>
+  <defs>
+    <linearGradient id="bodyGradient" x1="56" y1="60" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF6F61"/>
+      <stop offset="0.5" stop-color="#4A90E2"/>
+      <stop offset="1" stop-color="#7ED321"/>
+    </linearGradient>
+    <linearGradient id="flapGradient" x1="68" y1="52" x2="188" y2="108" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD600"/>
+      <stop offset="1" stop-color="#FF6F61"/>
+    </linearGradient>
+  </defs>
+  <!-- Backpack flap -->
+  <ellipse cx="128" cy="80" rx="60" ry="28" fill="url(#flapGradient)" stroke="#2D3E50" stroke-width="4"/>
+  <!-- Pockets/Buckets -->
+  <rect x="76" y="150" width="36" height="36" rx="8" fill="#F5A623" stroke="#2D3E50" stroke-width="3"/>
+  <rect x="120" y="150" width="36" height="36" rx="8" fill="#7ED321" stroke="#2D3E50" stroke-width="3"/>
+  <rect x="164" y="150" width="36" height="36" rx="8" fill="#50E3C2" stroke="#2D3E50" stroke-width="3"/>
+  <!-- Backpack straps -->
+  <path d="M56 100 Q36 120 56 140" stroke="#2D3E50" stroke-width="8" fill="none"/>
+  <path d="M200 100 Q220 120 200 140" stroke="#2D3E50" stroke-width="8" fill="none"/>
+  <!-- Backpack handle -->
+  <rect x="108" y="48" width="40" height="16" rx="8" fill="#2D3E50"/>
+</svg>

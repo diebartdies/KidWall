@@ -1,0 +1,5 @@
+Alembic migrations directory for ColePago (KidWall).
+
+- Place migration scripts here.
+- Use `alembic revision --autogenerate -m "message"` to create migrations.
+- Use `alembic upgrade head` to apply migrations.
