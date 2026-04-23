@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../api_service.dart';
 
 class RegisterScreen extends StatefulWidget {
-  final Function(String token) onRegisterSuccess;
+  final Function(String token, int parentId) onRegisterSuccess;
   const RegisterScreen({super.key, required this.onRegisterSuccess});
 
   @override
@@ -33,9 +33,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _role,
       );
       final token = result['token'] ?? result['access_token'];
-      if (token != null) {
+      final parentId =
+          result['parent_id'] ?? result['id']; // Adjust key as needed
+      if (token != null && parentId != null) {
         _apiService.setToken(token);
-        widget.onRegisterSuccess(token);
+        widget.onRegisterSuccess(token, parentId);
       } else {
         setState(() {
           _error = 'Registration failed';

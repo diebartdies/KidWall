@@ -1,20 +1,17 @@
 import 'package:flutter/material.dart';
-import 'screens/kid_home_screen.dart';
 
-void main() => runApp(const ColePagoKidApp());
+void main() => runApp(const MinimalKidApp());
 
-class ColePagoKidApp extends StatelessWidget {
-  const ColePagoKidApp({super.key});
+class MinimalKidApp extends StatelessWidget {
+  const MinimalKidApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ColePago Kid',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange),
-        useMaterial3: true,
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Kids App Test')),
+        body: const Center(child: Text('Kids App Launched!')),
       ),
-      home: const KidHomeScreen(),
     );
   }
 }

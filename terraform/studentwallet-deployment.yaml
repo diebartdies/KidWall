@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: studentwallet
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: studentwallet
+  template:
+    metadata:
+      labels:
+        app: studentwallet
+    spec:
+      containers:
+      - name: studentwallet
+        image: studentwallet:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8001
+        env:
+        - name: ENV
+          value: "production"

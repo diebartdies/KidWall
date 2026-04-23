@@ -1,19 +1,19 @@
-version: '3.8'
+
 services:
-  api:
-    build: .
-    container_name: colepago-api
-    env_file:
-      - .env
+  colepago:
+    build: ./colepago
     ports:
       - "8000:8000"
-    depends_on:
-      - db
     volumes:
-      - .:/app
+      - ./colepago:/app
+    restart: unless-stopped
+  colepago-parents-app:
+    build: ./colepago-parents-app
+    ports:
+      - "8080:80"
+    restart: unless-stopped
   db:
     image: postgres:15
-    container_name: colepago-db
     environment:
       POSTGRES_DB: colepago
       POSTGRES_USER: colepago

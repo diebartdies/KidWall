@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kidwall-deployment
+  labels:
+    app: kidwall
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kidwall
+  template:
+    metadata:
+      labels:
+        app: kidwall
+    spec:
+      containers:
+      - name: kidwall
+        image: kidwall:latest
+        ports:
+        - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kidwall-service
+spec:
+  selector:
+    app: kidwall
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP

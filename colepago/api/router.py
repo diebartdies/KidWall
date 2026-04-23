@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, HTTPException, Depends, Body
 from typing import Optional, Literal
 from pydantic import SecretStr, BaseModel, EmailStr
@@ -12,6 +13,39 @@ from models import Parent, Merchant, Base, UserType, get_db, User, Child  # adju
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# --- Stripe Test Endpoint ---
+class StripeTestRequest(BaseModel):
+    parent_id: int
+    amount_pesos: float = 100.0
+
+@router.post("/wallet/test-stripe")
+def test_stripe_payment(data: StripeTestRequest, db: Session = Depends(get_db)):
+    """
+    Test Stripe payment with test PaymentMethod ID (pm_card_visa).
+    Only available in non-production environments.
+    """
+    if os.getenv("ENV", "development").lower() == "production":
+        raise HTTPException(status_code=403, detail="This endpoint is disabled in production.")
+    parent = db.query(Parent).filter(Parent.id == data.parent_id).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=int(data.amount_pesos * 100),
+            currency="mxn",
+            payment_method="pm_card_visa",
+            confirmation_method="automatic",
+            confirm=True,
+        )
+        if intent.status == "succeeded":
+            return {"msg": "Stripe test payment succeeded", "intent_id": intent.id}
+        else:
+            raise HTTPException(status_code=402, detail="Stripe test payment failed: " + intent.status)
+    except stripe.error.CardError as e:
+        raise HTTPException(status_code=402, detail=f"Stripe card error: {e.user_message}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
 
 # --- Spend Endpoint ---
 class SpendRequest(BaseModel):

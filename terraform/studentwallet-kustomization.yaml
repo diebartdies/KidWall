@@ -1,0 +1,4 @@
+resources:
+  - studentwallet-namespace.yaml
+  - studentwallet-deployment.yaml
+  - studentwallet-service.yaml

@@ -1,0 +1,36 @@
+ColePago/StudentWallet – Secure Digital Wallet for Schools
+
+---
+
+[Logo: ColePago Logo]
+
+How It Works
+
+1. Parent Funds Wallet
+   [Image: Parent Funding]
+   - Parent uses the app to add money via Stripe/Mercado Pago.
+   - No card data or real money ever touches our backend.
+
+2. Virtual Tokens Credited
+   [Image: Tokens]
+   - Backend receives payment confirmation and credits virtual tokens/coins to the child’s wallet.
+   - Only tokens/coins flow through the backend.
+
+3. Child Spends at School
+   [Image: Child Pays]
+   - Child uses tokens to pay at school canteen, store, or for activities.
+   - Parent receives instant notification.
+
+4. Security & Protection
+   [Image: Security]
+   - AI Face Detection & Biometrics: Only the right child can access the wallet.
+   - No Real Money Exposure: All real money handled by PCI-compliant providers.
+   - Data Privacy: No sensitive payment data stored in the app or backend.
+
+---
+
+ColePago/StudentWallet – Safe, smart, and simple for families and schools.
+
+Contact: your-email@example.com
+
+© 2026 ColePago

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="JAVA_MODULE" version="4">
+  <component name="NewModuleRootManager" inherit-compiler-output="true">
+    <exclude-output />
+    <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/.venv/Include" />
+      <excludeFolder url="file://$MODULE_DIR$/.venv/Lib" />
+      <excludeFolder url="file://$MODULE_DIR$/.venv/Scripts" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago-parents-app/.dart_tool" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago-parents-app/.idea" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago-parents-app/android/.gradle" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago-parents-app/build" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago-parents-app/ios/Flutter/ephemeral" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago-parents-app/linux/flutter/ephemeral" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago-parents-app/macos/Flutter/ephemeral" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago-parents-app/windows/flutter/ephemeral" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago/.venv/Include" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago/.venv/Lib" />
+      <excludeFolder url="file://$MODULE_DIR$/colepago/.venv/Scripts" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

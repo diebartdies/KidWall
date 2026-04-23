@@ -4,7 +4,7 @@ import 'register_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
-  final Function(String token) onLoginSuccess;
+  final Function(String token, int parentId) onLoginSuccess;
   const LoginScreen({super.key, required this.onLoginSuccess});
 
   @override
@@ -28,15 +28,17 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _tryAutoLogin() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth_token');
-    if (token != null) {
+    final parentId = prefs.getInt('parent_id');
+    if (token != null && parentId != null) {
       _apiService.setToken(token);
-      widget.onLoginSuccess(token);
+      widget.onLoginSuccess(token, parentId);
     }
   }
 
-  Future<void> _saveToken(String token) async {
+  Future<void> _saveToken(String token, int parentId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
+    await prefs.setInt('parent_id', parentId);
   }
 
   void _login() async {
@@ -51,10 +53,12 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordController.text,
       );
       final token = result['token'] ?? result['access_token'];
-      if (token != null) {
+      final parentId =
+          result['parent_id'] ?? result['id']; // Adjust key as needed
+      if (token != null && parentId != null) {
         _apiService.setToken(token);
-        await _saveToken(token);
-        widget.onLoginSuccess(token);
+        await _saveToken(token, parentId);
+        widget.onLoginSuccess(token, parentId);
       } else {
         setState(() {
           _error = 'Invalid credentials';

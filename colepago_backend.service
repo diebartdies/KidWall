@@ -1,0 +1,17 @@
+[Unit]
+Description=Colepago Wallet Backend Service
+After=network.target puppet.service
+Requires=puppet.service
+
+[Service]
+Type=simple
+User=colepago
+WorkingDirectory=/opt/colepago/backend
+ExecStart=/opt/colepago/backend/.venv/bin/python main.py
+Restart=always
+RestartSec=5
+# Wait for Puppet to report OK before starting
+ExecStartPre=/bin/bash -c 'puppet agent --test && [ $? -eq 0 ]'
+
+[Install]
+WantedBy=multi-user.target

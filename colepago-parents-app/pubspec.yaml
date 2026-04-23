@@ -29,8 +29,20 @@ dependencies:
   intl: ^0.20.2
   flutter_localizations:
     sdk: flutter
-  local_auth: ^2.2.0
+  local_auth: ^3.0.1
   shared_preferences: ^2.5.5
+  camera: ^0.10.5+2
+  google_mlkit_face_detection: ^0.9.0
+
+  url_launcher: ^6.2.5
+
+  # Payment SDKs
+  # Payment SDKs (locked to current working versions)
+  mercado_pago_ducos: ^0.0.3
+  flutter_stripe: 10.0.0
+  dio: ^5.9.2
+  # NOTE: To safely upgrade payment SDKs, review release notes and test thoroughly before changing these versions.
+  # If you need to upgrade to a newer Stripe or Mercado Pago SDK, request an update and verify compatibility.
 
 dev_dependencies:
   flutter_test:
@@ -45,7 +57,6 @@ dev_dependencies:
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
-
 # The following section is specific to Flutter packages.
 flutter:
 

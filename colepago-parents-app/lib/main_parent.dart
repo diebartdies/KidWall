@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
-import 'screens/kid_home_screen.dart';
 
-void main() => runApp(const ColePagoParentApp());
+void main() {
+  runApp(const ColePagoParentsApp());
+}
 
-class ColePagoParentApp extends StatelessWidget {
-  const ColePagoParentApp({super.key});
+class ColePagoParentsApp extends StatelessWidget {
+  const ColePagoParentsApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +16,11 @@ class ColePagoParentApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
         useMaterial3: true,
       ),
-      home: MainDrawerScaffold(),
+      home: LoginScreen(
+        onLoginSuccess: (token, parentId) {
+          // TODO: Replace with navigation to the real parent dashboard
+        },
+      ),
     );
   }
 }
