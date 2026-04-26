@@ -6,12 +6,12 @@ services:
       - "8000:8000"
     volumes:
       - ./colepago:/app
-    restart: unless-stopped
+    restart: always
   colepago-parents-app:
     build: ./colepago-parents-app
     ports:
       - "8080:80"
-    restart: unless-stopped
+    restart: always
   db:
     image: postgres:15
     environment:
@@ -22,5 +22,6 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: always
 volumes:
   pgdata:

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # ColePago Backend (KidWall)
 
 A FastAPI backend for the ColePago (KidWall) kids' wallet system.
@@ -22,7 +21,3 @@ A FastAPI backend for the ColePago (KidWall) kids' wallet system.
 ---
 
 © 2026 ColePago
-=======
-# StudentWallet
-This is virtual wallet for kids in primary and secundary schools
->>>>>>> 199e86932d2e31b8f82806de48f3fd6cbb6d1d21
