@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
+import 'screens/parent_dashboard_screen.dart';
 
 void main() {
   runApp(const ColePagoParentsApp());
@@ -18,7 +19,12 @@ class ColePagoParentsApp extends StatelessWidget {
       ),
       home: LoginScreen(
         onLoginSuccess: (token, parentId) {
-          // TODO: Replace with navigation to the real parent dashboard
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) =>
+                  ParentDashboardScreen(token: token, parentId: parentId),
+            ),
+          );
         },
       ),
     );

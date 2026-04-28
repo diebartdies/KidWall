@@ -1,3 +1,40 @@
+# --- ParentProfile and EmergencyContact models ---
+from sqlalchemy import Text
+
+class ParentProfile(Base):
+    __tablename__ = "parent_profiles"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    role = Column(String, nullable=True)
+    home_address = Column(String, nullable=True)
+    home_postal = Column(String, nullable=True)
+    home_phone = Column(String, nullable=True)
+    mobile_phone = Column(String, nullable=True)
+    country_code = Column(String, nullable=True)
+    work_name = Column(String, nullable=True)
+    work_address = Column(String, nullable=True)
+    work_phone = Column(String, nullable=True)
+    workplace = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    # Relationship
+    user = relationship("User", backref="parent_profile", uselist=False)
+    emergency_contacts = relationship("EmergencyContact", back_populates="parent_profile", cascade="all, delete-orphan")
+
+class EmergencyContact(Base):
+    __tablename__ = "emergency_contacts"
+    id = Column(Integer, primary_key=True, index=True)
+    parent_profile_id = Column(Integer, ForeignKey("parent_profiles.id"), nullable=False)
+    name = Column(String, nullable=False)
+    surname = Column(String, nullable=True)
+    relationship = Column(String, nullable=True)
+    mobile = Column(String, nullable=True)
+    country_code = Column(String, nullable=True)
+    home_phone = Column(String, nullable=True)
+    work_phone = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    # Relationship
+    parent_profile = relationship("ParentProfile", back_populates="emergency_contacts")
 
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum
 from sqlalchemy.orm import relationship, declarative_base

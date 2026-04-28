@@ -2,6 +2,64 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
+  Future<Map<String, int>> getWalletBuckets(int parentId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/parent/$parentId/wallet_buckets'),
+      headers: _token != null ? {'Authorization': 'Bearer $_token'} : {},
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data is Map<String, dynamic>) {
+        // Expecting { 'Snacks': 120, ... }
+        return data.map(
+          (k, v) => MapEntry(k, v is int ? v : int.tryParse(v.toString()) ?? 0),
+        );
+      } else {
+        return {};
+      }
+    } else {
+      throw Exception('Failed to fetch wallet buckets: ${response.body}');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getTransactions(int childId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/child/$childId/transactions'),
+      headers: _token != null ? {'Authorization': 'Bearer $_token'} : {},
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data is List) {
+        return List<Map<String, dynamic>>.from(data);
+      } else if (data is Map && data['transactions'] is List) {
+        return List<Map<String, dynamic>>.from(data['transactions']);
+      } else {
+        return [];
+      }
+    } else {
+      throw Exception('Failed to fetch transactions: ${response.body}');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getChildren(int parentId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/parent/$parentId/children'),
+      headers: _token != null ? {'Authorization': 'Bearer $_token'} : {},
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data is List) {
+        return List<Map<String, dynamic>>.from(data);
+      } else if (data is Map && data['children'] is List) {
+        return List<Map<String, dynamic>>.from(data['children']);
+      } else {
+        return [];
+      }
+    } else {
+      throw Exception('Failed to fetch children: \\${response.body}');
+    }
+  }
+
   Future<Map<String, dynamic>> spendCoins({
     required int childId,
     required int merchantId,
@@ -53,8 +111,7 @@ class ApiService {
     }
   }
 
-    static const String baseUrl =
-      'https://drsrv.drsrv.net.ar:8000';
+  static const String baseUrl = 'https://drsrv.drsrv.net.ar:8000';
   String? _token;
 
   void setToken(String token) {
