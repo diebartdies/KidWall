@@ -163,7 +163,7 @@ class _AddChildScreenState extends State<AddChildScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                value: _selectedNeighborhood,
+                initialValue: _selectedNeighborhood,
                 items: _neighborhoods
                     .map((n) => DropdownMenuItem(value: n, child: Text(n)))
                     .toList(),
@@ -172,15 +172,16 @@ class _AddChildScreenState extends State<AddChildScreen> {
                     _selectedNeighborhood = neigh;
                     _selectedSchoolId = null;
                   });
-                  if (_selectedCity != null && neigh != null)
+                  if (_selectedCity != null && neigh != null) {
                     _fetchSchools(_selectedCity!, neigh);
+                  }
                 },
                 decoration: const InputDecoration(labelText: 'Neighborhood'),
                 validator: (v) => v == null ? 'Required' : null,
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                value: _selectedSchoolId,
+                initialValue: _selectedSchoolId,
                 items: _schools
                     .map(
                       (s) => DropdownMenuItem(
@@ -204,7 +205,7 @@ class _AddChildScreenState extends State<AddChildScreen> {
                 Text('Email: ${_schoolEmail ?? ''}'),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _childShift,
+                  initialValue: _childShift,
                   items:
                       (_schools
                                   .firstWhere(
@@ -304,7 +305,7 @@ class _AddChildScreenState extends State<AddChildScreen> {
                                 '/parent/add-child',
                                 payload,
                               );
-                              if (!mounted) return;
+                              if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text('Child added successfully!'),
@@ -312,8 +313,7 @@ class _AddChildScreenState extends State<AddChildScreen> {
                               );
                               Navigator.pop(context, true);
                             } catch (e) {
-                              if (!mounted) return;
-                              // ignore: use_build_context_synchronously
+                              if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
@@ -322,7 +322,9 @@ class _AddChildScreenState extends State<AddChildScreen> {
                                 ),
                               );
                             } finally {
-                              setState(() => _saving = false);
+                              if (mounted) {
+                                setState(() => _saving = false);
+                              }
                             }
                           }
                         },

@@ -1,8 +1,12 @@
-# PowerShell script to automate build, sync, container, and deployment for KidWall
+# PyesowerShell script to automate build, sync, container, and deployment for KidWall
+
+# Ensure we always run from the KidWall root regardless of where the script was invoked from
+Set-Location -Path $PSScriptRoot
 
 # 1. Upgrade Flutter if needed and build/recompile APKs
 Write-Host "Checking for new Flutter version..."
 flutter upgrade
+
 Write-Host "Building APKs..."
 Set-Location -Path "d:/kidwall/colepago-parents-app"
 ./build_both_apks.ps1

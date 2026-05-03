@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
+  static const String _githubApiBaseUrl = 'https://api.github.com';
+
   Future<Map<String, int>> getWalletBuckets(int parentId) async {
     final response = await http.get(
       Uri.parse('$baseUrl/parent/$parentId/wallet_buckets'),
@@ -160,5 +162,101 @@ class ApiService {
     } else {
       throw Exception('POST $endpoint failed');
     }
+  }
+
+  Future<Map<String, dynamic>> importGithubRepoInfo({
+    required String owner,
+    required String repo,
+    String? githubToken,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$_githubApiBaseUrl/repos/$owner/$repo'),
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        if (githubToken != null && githubToken.isNotEmpty)
+          'Authorization': 'Bearer $githubToken',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to import GitHub repo info: ${response.body}');
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic>) {
+      throw Exception('Unexpected GitHub response format for repository info');
+    }
+
+    return {
+      'id': data['id'],
+      'name': data['name'],
+      'full_name': data['full_name'],
+      'private': data['private'],
+      'description': data['description'],
+      'default_branch': data['default_branch'],
+      'html_url': data['html_url'],
+      'stargazers_count': data['stargazers_count'],
+      'watchers_count': data['watchers_count'],
+      'forks_count': data['forks_count'],
+      'open_issues_count': data['open_issues_count'],
+      'updated_at': data['updated_at'],
+      'owner': data['owner'] is Map<String, dynamic>
+          ? {
+              'login': data['owner']['login'],
+              'id': data['owner']['id'],
+              'avatar_url': data['owner']['avatar_url'],
+            }
+          : null,
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> importGithubIssues({
+    required String owner,
+    required String repo,
+    String state = 'open',
+    int perPage = 30,
+    String? githubToken,
+  }) async {
+    final response = await http.get(
+      Uri.parse(
+        '$_githubApiBaseUrl/repos/$owner/$repo/issues?state=$state&per_page=$perPage',
+      ),
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        if (githubToken != null && githubToken.isNotEmpty)
+          'Authorization': 'Bearer $githubToken',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to import GitHub issues: ${response.body}');
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! List) {
+      throw Exception('Unexpected GitHub response format for issues');
+    }
+
+    return data
+        .whereType<Map<String, dynamic>>()
+        // Filter out pull requests to keep only issues.
+        .where((item) => item['pull_request'] == null)
+        .map(
+          (item) => {
+            'id': item['id'],
+            'number': item['number'],
+            'title': item['title'],
+            'state': item['state'],
+            'created_at': item['created_at'],
+            'updated_at': item['updated_at'],
+            'html_url': item['html_url'],
+            'user': item['user'] is Map<String, dynamic>
+                ? {'login': item['user']['login'], 'id': item['user']['id']}
+                : null,
+          },
+        )
+        .toList();
   }
 }

@@ -1,0 +1,9 @@
+{
+  "dart.flutterSdkPath": "D:/tools/flutter",
+  "dart.analysisExcludedFolders": [
+    "D:/kidwall/colepago-parents-app/flutter"
+  ],
+  "files.exclude": {
+    "flutter/": true
+  }
+}

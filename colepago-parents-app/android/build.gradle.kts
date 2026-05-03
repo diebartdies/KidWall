@@ -8,6 +8,14 @@ buildscript {
     }
 }
 
+subprojects {
+    tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+        // Some Flutter plugin Android modules still compile with source/target 8.
+        // Suppress obsolete-option warnings on newer JDKs.
+        options.compilerArgs.add("-Xlint:-options")
+    }
+}
+
 allprojects {
     repositories {
         google()
