@@ -1,5 +1,8 @@
 import os
 from typing import Literal, Optional
+import secrets
+import string
+import datetime
 
 import mercadopago
 import stripe
@@ -10,6 +13,7 @@ from pydantic import BaseModel, EmailStr, SecretStr
 from sqlalchemy.orm import Session
 
 from models import Child, Merchant, Parent, User, UserType, get_db
+from email_utils import send_temp_password_email
 
 router = APIRouter()
 
@@ -59,6 +63,16 @@ class RegisterRequest(BaseModel):
 @router.get('/ping')
 async def ping():
     return {'msg': 'pong'}
+
+
+@router.get('/')
+async def api_root():
+    return {
+        'service': 'ColePago API',
+        'status': 'ok',
+        'ping': '/api/ping',
+        'docs': '/docs',
+    }
 
 
 @router.post('/auth/register')
@@ -139,6 +153,72 @@ def child_spend(data: SpendRequest, db: Session = Depends(get_db)):
     merchant.balance = (merchant.balance or 0) + data.amount
     db.commit()
     return {'msg': 'Payment successful'}
+
+
+# ── Password reset ────────────────────────────────────────────────
+
+def _generate_temp_password(length: int = 10) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    temp_password: str
+    new_password: str
+
+
+@router.post('/auth/forgot-password')
+def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    # Always return success to prevent email enumeration
+    if not user:
+        return {'msg': 'If that email is registered you will receive a reset link.'}
+
+    temp_pw = _generate_temp_password()
+    user.temp_password_hash = pwd_context.hash(temp_pw)
+    user.temp_password_expires = datetime.datetime.utcnow() + datetime.timedelta(hours=2)
+    db.commit()
+
+    try:
+        send_temp_password_email(user.email, user.name, temp_pw)
+    except Exception as exc:
+        # Roll back temp password if email fails so user is not locked out
+        user.temp_password_hash = None
+        user.temp_password_expires = None
+        db.commit()
+        raise HTTPException(status_code=500, detail=f'Failed to send email: {exc}')
+
+    return {'msg': 'If that email is registered you will receive a reset link.'}
+
+
+@router.post('/auth/reset-password')
+def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user or not user.temp_password_hash:
+        raise HTTPException(status_code=400, detail='Invalid or expired reset request.')
+
+    if user.temp_password_expires is None or datetime.datetime.utcnow() > user.temp_password_expires:
+        user.temp_password_hash = None
+        user.temp_password_expires = None
+        db.commit()
+        raise HTTPException(status_code=400, detail='Temporary password has expired. Please request a new one.')
+
+    if not pwd_context.verify(data.temp_password, user.temp_password_hash):
+        raise HTTPException(status_code=400, detail='Invalid temporary password.')
+
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=400, detail='New password must be at least 8 characters.')
+
+    user.password_hash = pwd_context.hash(data.new_password)
+    user.temp_password_hash = None
+    user.temp_password_expires = None
+    db.commit()
+    return {'msg': 'Password updated successfully.'}
 
 
 app = FastAPI(title='Colepago API')

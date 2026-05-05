@@ -5,7 +5,7 @@ you can change this path if needed
 cd d:/kidwall/colepago-parents-app
 
 # Build the APK
-flutter build apk
+flutter build apk --flavor kids --target lib/main_kid.dart --dart-define=FLAVOR=kids
 
 # Rename the APK if build succeeded
 $apkPath = "build/app/outputs/flutter-apk/app-release.apk"

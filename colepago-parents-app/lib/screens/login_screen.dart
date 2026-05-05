@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../api_service.dart';
 import 'register_screen.dart';
+import 'forgot_password_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -123,6 +124,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   );
                 },
                 child: const Text('Don\'t have an account? Sign Up'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ForgotPasswordScreen(),
+                    ),
+                  );
+                },
+                child: const Text('Forgot password?'),
               ),
             ],
           ),

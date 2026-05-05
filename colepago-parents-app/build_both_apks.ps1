@@ -3,8 +3,8 @@
 $projectPath = "d:/kidwall/colepago-parents-app"
 Set-Location $projectPath
 
-# Build Kids APK (full UX)
-flutter build apk --flavor kids --target lib/main.dart --dart-define=FLAVOR=kids
+# Build Kids APK
+flutter build apk --flavor kids --target lib/main_kid.dart --dart-define=FLAVOR=kids
 $kidsApk = "$projectPath/build/app/outputs/flutter-apk/app-kids-release.apk"
 if (Test-Path $kidsApk) {
     Write-Host "Kids APK generated: $kidsApk"

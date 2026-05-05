@@ -3,6 +3,35 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   static const String _githubApiBaseUrl = 'https://api.github.com';
+  static const String _appEnv = String.fromEnvironment(
+    'APP_ENV',
+    defaultValue: 'local',
+  );
+  static const String _flavor = String.fromEnvironment(
+    'FLAVOR',
+    defaultValue: 'parents',
+  );
+  static const String _apiBaseUrlOverride = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: '',
+  );
+  static const String _kidsApiBaseUrl = String.fromEnvironment(
+    'KIDS_API_BASE_URL',
+    defaultValue: 'http://127.0.0.1:8010/api',
+  );
+  static const String _parentsApiBaseUrl = String.fromEnvironment(
+    'PARENTS_API_BASE_URL',
+    defaultValue: 'http://127.0.0.1:8010/api',
+  );
+  static const String _kidsStagingApiBaseUrl = String.fromEnvironment(
+    'KIDS_STAGING_API_BASE_URL',
+    defaultValue: 'https://drsrv.drsrv.net.ar:8000',
+  );
+  static const String _parentsStagingApiBaseUrl = String.fromEnvironment(
+    'PARENTS_STAGING_API_BASE_URL',
+    defaultValue: 'https://drsrv.drsrv.net.ar:8000',
+  );
+  static const String _prodApiBaseUrl = 'https://drsrv.drsrv.net.ar:8000';
 
   Future<Map<String, int>> getWalletBuckets(int parentId) async {
     final response = await http.get(
@@ -113,11 +142,71 @@ class ApiService {
     }
   }
 
-  static const String baseUrl = 'https://drsrv.drsrv.net.ar:8000';
+  static String get baseUrl {
+    if (_apiBaseUrlOverride.isNotEmpty) {
+      return _apiBaseUrlOverride;
+    }
+
+    if (_appEnv == 'prod') {
+      return _prodApiBaseUrl;
+    }
+
+    if (_appEnv == 'staging') {
+      switch (_flavor) {
+        case 'kids':
+          return _kidsStagingApiBaseUrl;
+        case 'parents':
+          return _parentsStagingApiBaseUrl;
+        default:
+          return _parentsStagingApiBaseUrl;
+      }
+    }
+
+    switch (_flavor) {
+      case 'kids':
+        return _kidsApiBaseUrl;
+      case 'parents':
+        return _parentsApiBaseUrl;
+      default:
+        return _parentsApiBaseUrl;
+    }
+  }
+
   String? _token;
 
   void setToken(String token) {
     _token = token;
+  }
+
+  Future<void> forgotPassword(String email) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/forgot-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Request failed');
+    }
+  }
+
+  Future<void> resetPassword({
+    required String email,
+    required String tempPassword,
+    required String newPassword,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/reset-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': email,
+        'temp_password': tempPassword,
+        'new_password': newPassword,
+      }),
+    );
+    if (response.statusCode != 200) {
+      final body = jsonDecode(response.body);
+      throw Exception(body['detail'] ?? 'Failed to reset password');
+    }
   }
 
   Future<Map<String, dynamic>> login(String email, String password) async {

@@ -9,3 +9,6 @@ pyjwt
 pydantic
 httpx
 openai-whisper
+stripe
+mercadopago
+pydantic[email]
