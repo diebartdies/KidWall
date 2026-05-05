@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 def _ensure_requirements():
@@ -60,5 +61,15 @@ def favicon():
 
 if __name__ == "__main__":
     import uvicorn
+
     _ensure_requirements()
-    uvicorn.run("main:app", host="0.0.0.0", port=8010, reload=True)
+    project_root = Path(__file__).parent
+    reload_enabled = os.getenv("UVICORN_RELOAD", "false").lower() == "true"
+
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8010,
+        reload=reload_enabled,
+        reload_dirs=[str(project_root / "colepago"), str(project_root)] if reload_enabled else None,
+    )

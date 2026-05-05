@@ -70,9 +70,13 @@ Write-Host "Running Alembic migrations..."
 
 # 4. Restart backend (kill existing python main.py if running, then start fresh)
 Write-Host "Restarting backend..."
-Get-Process -Name python -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like '*main.py*' } |
-    Stop-Process -Force -ErrorAction SilentlyContinue
+$backendPort = 8010
+$listener = Get-NetTCPConnection -LocalPort $backendPort -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+if ($listener) {
+    Write-Host "Stopping process using port $backendPort (PID $($listener.OwningProcess))..."
+    Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
+}
 Start-Process -NoNewWindow -FilePath ".venv\Scripts\python.exe" -ArgumentList "main.py"
 Write-Host "Backend started on http://0.0.0.0:8010"
 
