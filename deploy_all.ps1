@@ -52,7 +52,7 @@ if ($LASTEXITCODE -eq 0) {
         Select-Object -Skip 10 |
         Remove-Item -Force
 } else {
-    Write-Warning "Backup failed — aborting deployment to protect data."
+    Write-Warning "Backup failed - aborting deployment to protect data."
     exit 1
 }
 
