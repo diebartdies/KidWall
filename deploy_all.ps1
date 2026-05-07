@@ -3,6 +3,16 @@
 # Ensure we always run from the KidWall root regardless of where the script was invoked from
 Set-Location -Path $PSScriptRoot
 
+# 0. Backup .env locally
+if (Test-Path ".env") {
+    $envBackupDir = "$PSScriptRoot\backups"
+    if (-not (Test-Path $envBackupDir)) { New-Item -ItemType Directory -Path $envBackupDir | Out-Null }
+    Copy-Item ".env" "$envBackupDir\.env.backup" -Force
+    Write-Host ".env backed up to $envBackupDir\.env.backup"
+} else {
+    Write-Warning ".env not found — skipping backup."
+}
+
 # 1. Upgrade Flutter if needed and build/recompile APKs
 Write-Host "Checking for new Flutter version..."
 flutter upgrade

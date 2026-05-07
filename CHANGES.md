@@ -75,12 +75,12 @@
 ```
 SMTP_HOST=mailout.easymail.ca
 SMTP_PORT=587
-SMTP_USER=dcarloni@drsrv.net.ar
-SMTP_PASS=Palo1010
-SMTP_FROM=dcarloni@drsrv.net.ar
+SMTP_USER=your_email@domain.com
+SMTP_PASS=your_email_password
+SMTP_FROM=your_email@domain.com
 SMTP_USE_TLS=true
 ```
-- SMTP credentials updated to `dcarloni@drsrv.net.ar`
+- SMTP credentials are configured via local `.env` (do not commit real values)
 
 ---
 

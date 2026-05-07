@@ -1,3 +1,5 @@
 # Ignore environment files containing secrets
 .env
 colepago/.env
+backups/.env.backup
+backups/
