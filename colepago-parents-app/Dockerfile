@@ -1,5 +1,5 @@
 # Flutter web app Dockerfile
-FROM cirrusci/flutter:latest AS build
+FROM ghcr.io/cirruslabs/flutter:stable AS build
 WORKDIR /app
 COPY . .
 RUN flutter pub get

@@ -16,14 +16,21 @@ DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 # Path to your Excel file
 EXCEL_PATH = "d:/kidwall/2026.01.12_padron_oficial_establecimientos_educativos_die.xlsx"
 print("Reading Excel file...")
-df = pd.read_excel(EXCEL_PATH)
+df = pd.read_excel(EXCEL_PATH, sheet_name="padron", header=12)
+
+# Normalize source headers once so lookups are stable across accent/case variants.
+df.columns = [str(col).strip() for col in df.columns]
 
 # Rename columns for consistency
 df = df.rename(columns={
-    'jurisdiccion': 'provincia',
-    'localidad': 'ciudad',
-    # Add more mappings if needed
+    'Jurisdicción': 'provincia',
+    'Localidad': 'ciudad',
+    'Nombre': 'name',
+    'Domicilio': 'address',
+    'Teléfono': 'phone',
 })
+
+GEOCODE_MISSING_COORDS = os.getenv("GEOCODE_MISSING_COORDS", "false").lower() == "true"
 
 # Fill missing columns if not present
 def get_col(col):
@@ -39,15 +46,18 @@ def insert_schools():
         # Truncate the schools table before import
         conn.execute(School.__table__.delete())
         for _, row in df.iterrows():
-            name = row.get('nombre', '')
+            name = row.get('name', '')
             provincia = row.get('provincia', '')
             ciudad = row.get('ciudad', '')
             comuna = row.get('comuna', None)
-            address = row.get('domicilio', None)
+            address = row.get('address', None)
+            phone = row.get('phone', None)
             latitude = row.get('latitud', None)
             longitude = row.get('longitud', None)
+            if pd.isna(phone):
+                phone = None
             # If lat/lon missing, geocode
-            if (latitude is None or pd.isna(latitude)) or (longitude is None or pd.isna(longitude)):
+            if GEOCODE_MISSING_COORDS and ((latitude is None or pd.isna(latitude)) or (longitude is None or pd.isna(longitude))):
                 if address:
                     latitude, longitude = geocode_with_retry(address, ciudad, provincia)
             school = School(
@@ -56,6 +66,7 @@ def insert_schools():
                 ciudad=ciudad,
                 comuna=comuna,
                 address=address,
+                phone=phone,
                 latitude=latitude,
                 longitude=longitude
             )
@@ -66,6 +77,7 @@ def insert_schools():
                     ciudad=school.ciudad,
                     comuna=school.comuna,
                     address=school.address,
+                    phone=school.phone,
                     latitude=school.latitude,
                     longitude=school.longitude
                 )

@@ -21,7 +21,7 @@ _db_pass = os.getenv('POSTGRES_PASSWORD', 'Palo1010')
 _db_host = os.getenv('POSTGRES_HOST', 'localhost')
 if _db_host == 'db':   # Docker service name → use host-mapped address
     _db_host = 'localhost'
-_db_port = os.getenv('POSTGRES_PORT', '5433')
+_db_port = os.getenv('POSTGRES_PORT', '5432')
 _db_name = os.getenv('POSTGRES_DB', 'colepago')
 config.set_main_option(
     'sqlalchemy.url',

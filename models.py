@@ -38,6 +38,7 @@ class School(Base):
     ciudad = Column(String, nullable=False)
     comuna = Column(String, nullable=True)
     address = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
 

@@ -32,11 +32,12 @@ Write-Host "[OK] Existing containers stopped" -ForegroundColor Green
 
 # Build images
 Write-Host "[4/6] Building Docker images..." -ForegroundColor Yellow
-docker-compose build --pull 2>&1 | Out-Null
+docker-compose build --pull
 if ($LASTEXITCODE -eq 0) {
     Write-Host "[OK] Images built successfully" -ForegroundColor Green
 } else {
     Write-Host "[ERROR] Build failed" -ForegroundColor Red
+    Write-Host "[INFO] Re-run for verbose output: docker-compose build --pull --progress=plain" -ForegroundColor Yellow
     exit 1
 }
 
