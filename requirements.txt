@@ -12,3 +12,4 @@ openai-whisper
 stripe
 mercadopago
 pydantic[email]
+twilio

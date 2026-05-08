@@ -73,6 +73,32 @@ class Child(Base):
     is_blocked = Column(Integer, default=0)  # 0 = active, 1 = blocked
     suspicious_reason = Column(String, nullable=True)
     last_merchants = Column(String, nullable=True)  # Comma-separated merchant IDs for quick pattern check
+    wallet_buckets = relationship("WalletBucket", back_populates="child", cascade="all, delete-orphan")
+    location_pings = relationship("ChildLocationPing", back_populates="child", cascade="all, delete-orphan", order_by="ChildLocationPing.recorded_at")
+    route_waypoints = relationship("ChildRouteWaypoint", back_populates="child", cascade="all, delete-orphan", order_by="ChildRouteWaypoint.seq")
+    last_route_alert = Column(DateTime, nullable=True)  # last time a route-deviation alert was sent
+
+
+class ChildLocationPing(Base):
+    """Single GPS ping sent by the child's device."""
+    __tablename__ = "child_location_pings"
+    id = Column(Integer, primary_key=True, index=True)
+    child_id = Column(Integer, ForeignKey("children.id"), nullable=False)
+    lat = Column(Float, nullable=False)
+    lon = Column(Float, nullable=False)
+    recorded_at = Column(DateTime, default=datetime.datetime.utcnow)
+    child = relationship("Child", back_populates="location_pings")
+
+
+class ChildRouteWaypoint(Base):
+    """One point in the child's standard home↔school route (set by parent)."""
+    __tablename__ = "child_route_waypoints"
+    id = Column(Integer, primary_key=True, index=True)
+    child_id = Column(Integer, ForeignKey("children.id"), nullable=False)
+    seq = Column(Integer, nullable=False)   # 0-based order along the route
+    lat = Column(Float, nullable=False)
+    lon = Column(Float, nullable=False)
+    child = relationship("Child", back_populates="route_waypoints")
 
 
 class TransactionType(enum.Enum):
@@ -82,24 +108,53 @@ class TransactionType(enum.Enum):
     transfer = "transfer"
 
 
+class WalletBucket(Base):
+    """
+    A named spending envelope for a child.
+    Parent allocates coins and sets an alert threshold (%).
+    When spent/allocated >= alert_threshold_pct the parent gets notified.
+    """
+    __tablename__ = "wallet_buckets"
+    id = Column(Integer, primary_key=True, index=True)
+    child_id = Column(Integer, ForeignKey("children.id"), nullable=False)
+    name = Column(String, nullable=False)               # e.g. "Lunch", "Bus", "Snacks"
+    allocated = Column(Float, default=0.0)              # coins assigned to this bucket
+    spent = Column(Float, default=0.0)                  # coins consumed so far
+    alert_threshold_pct = Column(Integer, default=80)   # 0-100, alert when spent/allocated >= this
+    alert_sent = Column(Integer, default=0)             # 1 = notification already sent this cycle
+    child = relationship("Child", back_populates="wallet_buckets")
+
+    @property
+    def remaining(self) -> float:
+        return max(self.allocated - self.spent, 0.0)
+
+    @property
+    def pct_used(self) -> int:
+        if self.allocated <= 0:
+            return 0
+        return int(self.spent / self.allocated * 100)
+
+
 class Transaction(Base):
     __tablename__ = "transactions"
     id = Column(Integer, primary_key=True, index=True)
-    from_id = Column(Integer, nullable=True)  # User or child
-    to_id = Column(Integer, nullable=True)    # User or child
+    from_id = Column(Integer, nullable=True)   # User or child ID
+    to_id = Column(Integer, nullable=True)     # User or child ID
+    child_id = Column(Integer, ForeignKey("children.id"), nullable=True)  # for rapid-spend detection
     amount = Column(Float, nullable=False)
     type = Column(Enum(TransactionType), nullable=False)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
     description = Column(String, nullable=True)
 
 
-# --- ParentProfile and EmergencyContact models ---
+# --- ParentProfile and TrustedContact models ---
 
 class ParentProfile(Base):
     __tablename__ = "parent_profiles"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    role = Column(String, nullable=True)
+    relationship_to_child = Column(String, nullable=True)  # father, mother, uncle, aunt, other
     home_address = Column(String, nullable=True)
     home_postal = Column(String, nullable=True)
     home_phone = Column(String, nullable=True)
@@ -108,14 +163,16 @@ class ParentProfile(Base):
     work_name = Column(String, nullable=True)
     work_address = Column(String, nullable=True)
     work_phone = Column(String, nullable=True)
+    work_shift = Column(String, nullable=True)   # morning, afternoon, night, rotating
+    work_hours = Column(String, nullable=True)   # e.g. "08:00-16:00"
     workplace = Column(String, nullable=True)
     email = Column(String, nullable=True)
     # Relationship
     user = relationship("User", backref="parent_profile", uselist=False)
-    emergency_contacts = relationship("EmergencyContact", back_populates="parent_profile", cascade="all, delete-orphan")
+    trusted_contacts = relationship("TrustedContact", back_populates="parent_profile", cascade="all, delete-orphan")
 
-class EmergencyContact(Base):
-    __tablename__ = "emergency_contacts"
+class TrustedContact(Base):
+    __tablename__ = "emergency_contacts"  # DB table kept for backward compat
     id = Column(Integer, primary_key=True, index=True)
     parent_profile_id = Column(Integer, ForeignKey("parent_profiles.id"), nullable=False)
     name = Column(String, nullable=False)
@@ -128,10 +185,11 @@ class EmergencyContact(Base):
     address = Column(String, nullable=True)
     email = Column(String, nullable=True)
     # Relationship
-    parent_profile = relationship("ParentProfile", back_populates="emergency_contacts")
+    parent_profile = relationship("ParentProfile", back_populates="trusted_contacts")
 
 
 # Aliases for router compatibility
 UserType = UserRole
 Parent = User
 Merchant = User
+Bucket = WalletBucket

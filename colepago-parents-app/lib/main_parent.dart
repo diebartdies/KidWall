@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'api_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/parent_dashboard_screen.dart';
+import 'screens/first_time_screen.dart';
 
 void main() {
   runApp(const ColePagoParentsApp());
@@ -18,13 +21,58 @@ class ColePagoParentsApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: LoginScreen(
-        onLoginSuccess: (token, parentId) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) =>
-                  ParentDashboardScreen(token: token, parentId: parentId),
-            ),
-          );
+        onLoginSuccess: (token, parentId) async {
+          final prefs = await SharedPreferences.getInstance();
+          final profileKey = 'profile_complete_$parentId';
+          bool profileComplete = prefs.getBool(profileKey) ?? false;
+
+          if (!profileComplete) {
+            // Check with the server
+            try {
+              final api = ApiService();
+              api.setToken(token);
+              final profile = await api.get('/parent/$parentId/profile');
+              profileComplete =
+                  profile.isNotEmpty &&
+                  (profile['mobile_phone'] ?? '').toString().isNotEmpty;
+              if (profileComplete) {
+                await prefs.setBool(profileKey, true);
+              }
+            } catch (_) {
+              profileComplete = false;
+            }
+          }
+
+          if (!context.mounted) return;
+          if (profileComplete) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) =>
+                    ParentDashboardScreen(token: token, parentId: parentId),
+              ),
+            );
+          } else {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => FirstTimeScreen(
+                  token: token,
+                  parentId: parentId,
+                  onSetupComplete: () async {
+                    await prefs.setBool(profileKey, true);
+                    if (!context.mounted) return;
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => ParentDashboardScreen(
+                          token: token,
+                          parentId: parentId,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          }
         },
       ),
     );

@@ -253,6 +253,47 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> put(
+    String endpoint,
+    Map<String, dynamic> data,
+  ) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      },
+      body: jsonEncode(data),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('PUT $endpoint failed: ${response.body}');
+    }
+  }
+
+  Future<List<dynamic>> getList(String endpoint) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl$endpoint'),
+      headers: _token != null ? {'Authorization': 'Bearer $_token'} : {},
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as List<dynamic>;
+    } else {
+      throw Exception('GET $endpoint failed');
+    }
+  }
+
+  Future<void> delete(String endpoint) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl$endpoint'),
+      headers: _token != null ? {'Authorization': 'Bearer $_token'} : {},
+    );
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('DELETE $endpoint failed');
+    }
+  }
+
   Future<Map<String, dynamic>> importGithubRepoInfo({
     required String owner,
     required String repo,

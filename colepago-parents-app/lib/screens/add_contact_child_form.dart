@@ -361,7 +361,7 @@ class _AddContactChildFormState extends State<AddContactChildForm> {
             ],
             const SizedBox(height: 24),
             Text(
-              'Emergency Contacts',
+              'Trusted Contacts',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             ..._emergencyContacts.asMap().entries.map((entry) {
@@ -392,7 +392,7 @@ class _AddContactChildFormState extends State<AddContactChildForm> {
             }),
             TextButton.icon(
               icon: Icon(Icons.add),
-              label: Text('Add Emergency Contact'),
+              label: Text('Add Trusted Contact'),
               onPressed: _addEmergencyContact,
             ),
             const SizedBox(height: 24),

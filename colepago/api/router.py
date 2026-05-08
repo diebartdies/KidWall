@@ -12,8 +12,11 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, SecretStr
 from sqlalchemy.orm import Session
 
-from models import Child, Merchant, Parent, User, UserType, get_db
-from email_utils import send_temp_password_email
+from models import Child, Merchant, Parent, ParentProfile, TrustedContact, User, UserType, get_db
+from email_utils import send_temp_password_email, send_alert_email
+from whatsapp_utils import send_whatsapp, make_voice_call
+from geo_utils import is_payment_location_valid, is_rapid_spend, is_off_route
+from models import Transaction, TransactionType, ChildLocationPing, ChildRouteWaypoint
 
 router = APIRouter()
 
@@ -40,8 +43,8 @@ class SpendRequest(BaseModel):
     child_id: int
     merchant_id: int
     amount: float
-    pay_lat: float
-    pay_lon: float
+    pay_lat: Optional[float] = None
+    pay_lon: Optional[float] = None
 
 
 class FundWalletRequest(BaseModel):
@@ -146,13 +149,204 @@ def child_spend(data: SpendRequest, db: Session = Depends(get_db)):
     merchant = db.query(Merchant).filter(Merchant.id == data.merchant_id).first()
     if not child or not merchant:
         raise HTTPException(status_code=404, detail='Child or merchant not found')
+    if child.is_blocked:
+        raise HTTPException(status_code=403, detail='Account blocked')
     if child.balance < data.amount:
         raise HTTPException(status_code=400, detail='Insufficient balance')
 
+    # ── Geo-fence check ──────────────────────────────────────────────
+    # If the child has a school location set, payment must originate
+    # within ~3 blocks (0.4 km) of the school OR at the merchant.
+    # If no location is sent and a school is configured, deny the payment.
+    has_school = child.school_lat is not None and child.school_lon is not None
+    if has_school:
+        if data.pay_lat is None or data.pay_lon is None:
+            raise HTTPException(
+                status_code=403,
+                detail='Location required: payment must be made at or near school'
+            )
+        if not is_payment_location_valid(child, merchant, data.pay_lat, data.pay_lon, db):
+            raise HTTPException(
+                status_code=403,
+                detail='Payment declined: too far from school (allowed within ~3 blocks)'
+            )
+
+    # ── Anti-theft: rapid-spend detection ────────────────────────────
+    # If >= 3 purchases happen within 5 minutes, block the account and
+    # immediately alert the parent (possible phone theft).
+    if is_rapid_spend(child, db):
+        child.is_blocked = 1
+        child.suspicious_reason = 'Auto-blocked: rapid consecutive purchases (possible theft)'
+        db.commit()
+        # Fire alert in background (non-blocking)
+        _fire_theft_alert(child, db)
+        raise HTTPException(
+            status_code=403,
+            detail='Account auto-blocked: too many purchases in a short time. Parent has been alerted.'
+        )
+
     child.balance -= data.amount
     merchant.balance = (merchant.balance or 0) + data.amount
+
+    # Record transaction for future rapid-spend queries
+    txn = Transaction(
+        from_id=child.id,
+        to_id=merchant.id,
+        child_id=child.id,
+        amount=data.amount,
+        type=TransactionType.spend,
+        description=f'Purchase at merchant {merchant.id}',
+    )
+    db.add(txn)
     db.commit()
     return {'msg': 'Payment successful'}
+
+
+def _fire_theft_alert(child, db):
+    """Send WhatsApp + email to parent when rapid-spend triggers an auto-block."""
+    try:
+        parent_user = child.parent
+        profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_user.id).first()
+        msg = (
+            f"🚨 *ColePago Security Alert*\n\n"
+            f"Your child *{child.name}*'s account has been *automatically blocked* because "
+            f"3 or more purchases were made within 5 minutes.\n\n"
+            f"This may indicate phone theft. Please check and unblock via the app if safe."
+        )
+        if profile and profile.mobile_phone:
+            try:
+                send_whatsapp(profile.mobile_phone, profile.country_code or '', msg)
+            except Exception:
+                pass
+        if parent_user and parent_user.email:
+            try:
+                send_alert_email(
+                    to_email=parent_user.email,
+                    recipient_name=parent_user.name,
+                    child_name=child.name,
+                    message=(
+                        f"{child.name}'s account was auto-blocked after 3 purchases in under 5 minutes. "
+                        "This may indicate phone theft. Log in to review and unblock."
+                    ),
+                    school_name='ColePago',
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass  # alert failure must never prevent the HTTP response
+
+
+# ── Child location tracking ───────────────────────────────────────────────
+
+class LocationPingRequest(BaseModel):
+    lat: float
+    lon: float
+
+
+class RouteWaypointIn(BaseModel):
+    seq: int
+    lat: float
+    lon: float
+
+
+@router.post('/child/{child_id}/location')
+def post_location_ping(child_id: int, data: LocationPingRequest, db: Session = Depends(get_db)):
+    """Child device sends its current GPS position."""
+    child = db.query(Child).filter(Child.id == child_id).first()
+    if not child:
+        raise HTTPException(status_code=404, detail='Child not found')
+
+    ping = ChildLocationPing(child_id=child_id, lat=data.lat, lon=data.lon)
+    db.add(ping)
+    db.commit()
+
+    # Check if the child is off their normal route and alert parent
+    off_route = is_off_route(child, data.lat, data.lon, db)
+    if off_route:
+        now = datetime.datetime.utcnow()
+        # Throttle: only alert once every 10 minutes
+        if (
+            child.last_route_alert is None
+            or (now - child.last_route_alert).total_seconds() > 600
+        ):
+            child.last_route_alert = now
+            db.commit()
+            _fire_route_alert(child, data.lat, data.lon, db)
+
+    return {'recorded': True, 'off_route': off_route}
+
+
+@router.get('/child/{child_id}/location/latest')
+def get_latest_location(child_id: int, db: Session = Depends(get_db)):
+    """Return the child's most recent GPS ping."""
+    ping = (
+        db.query(ChildLocationPing)
+        .filter(ChildLocationPing.child_id == child_id)
+        .order_by(ChildLocationPing.recorded_at.desc())
+        .first()
+    )
+    if not ping:
+        raise HTTPException(status_code=404, detail='No location data yet')
+    return {'lat': ping.lat, 'lon': ping.lon, 'recorded_at': ping.recorded_at}
+
+
+@router.put('/child/{child_id}/route')
+def set_route(child_id: int, waypoints: list[RouteWaypointIn], db: Session = Depends(get_db)):
+    """Replace the child's standard route (array of ordered lat/lon waypoints)."""
+    child = db.query(Child).filter(Child.id == child_id).first()
+    if not child:
+        raise HTTPException(status_code=404, detail='Child not found')
+    db.query(ChildRouteWaypoint).filter(ChildRouteWaypoint.child_id == child_id).delete()
+    for wp in waypoints:
+        db.add(ChildRouteWaypoint(child_id=child_id, seq=wp.seq, lat=wp.lat, lon=wp.lon))
+    db.commit()
+    return {'msg': f'{len(waypoints)} waypoints saved'}
+
+
+@router.get('/child/{child_id}/route')
+def get_route(child_id: int, db: Session = Depends(get_db)):
+    """Return the child's configured route waypoints."""
+    wps = (
+        db.query(ChildRouteWaypoint)
+        .filter(ChildRouteWaypoint.child_id == child_id)
+        .order_by(ChildRouteWaypoint.seq)
+        .all()
+    )
+    return [{'seq': w.seq, 'lat': w.lat, 'lon': w.lon} for w in wps]
+
+
+def _fire_route_alert(child, lat: float, lon: float, db):
+    """Alert the parent when the child strays from their standard route."""
+    try:
+        parent_user = child.parent
+        profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_user.id).first()
+        msg = (
+            f"📍 *ColePago Route Alert*\n\n"
+            f"*{child.name}* appears to be off their normal route.\n"
+            f"Last known position: lat {lat:.5f}, lon {lon:.5f}\n\n"
+            f"Please check on them."
+        )
+        if profile and profile.mobile_phone:
+            try:
+                send_whatsapp(profile.mobile_phone, profile.country_code or '', msg)
+            except Exception:
+                pass
+        if parent_user and parent_user.email:
+            try:
+                send_alert_email(
+                    to_email=parent_user.email,
+                    recipient_name=parent_user.name,
+                    child_name=child.name,
+                    message=(
+                        f"{child.name} appears to be off their normal route. "
+                        f"Last position: {lat:.5f}, {lon:.5f}. Please check on them."
+                    ),
+                    school_name='ColePago',
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 # ── Password reset ────────────────────────────────────────────────
@@ -219,6 +413,281 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
     user.temp_password_expires = None
     db.commit()
     return {'msg': 'Password updated successfully.'}
+
+
+# ── Parent Profile ────────────────────────────────────────────────
+
+class ParentProfileRequest(BaseModel):
+    relationship_to_child: Optional[str] = None
+    home_address: Optional[str] = None
+    home_postal: Optional[str] = None
+    home_phone: Optional[str] = None
+    mobile_phone: Optional[str] = None
+    country_code: Optional[str] = None
+    work_name: Optional[str] = None
+    work_address: Optional[str] = None
+    work_phone: Optional[str] = None
+    work_shift: Optional[str] = None
+    work_hours: Optional[str] = None
+    workplace: Optional[str] = None
+    email: Optional[str] = None
+
+
+@router.get('/parent/{parent_id}/profile')
+def get_parent_profile(parent_id: int, db: Session = Depends(get_db)):
+    profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_id).first()
+    if not profile:
+        return {}
+    return {
+        'id': profile.id,
+        'relationship_to_child': profile.relationship_to_child,
+        'home_address': profile.home_address,
+        'home_postal': profile.home_postal,
+        'home_phone': profile.home_phone,
+        'mobile_phone': profile.mobile_phone,
+        'country_code': profile.country_code,
+        'work_name': profile.work_name,
+        'work_address': profile.work_address,
+        'work_phone': profile.work_phone,
+        'work_shift': profile.work_shift,
+        'work_hours': profile.work_hours,
+        'workplace': profile.workplace,
+        'email': profile.email,
+    }
+
+
+@router.put('/parent/{parent_id}/profile')
+def upsert_parent_profile(parent_id: int, data: ParentProfileRequest, db: Session = Depends(get_db)):
+    parent = db.query(User).filter(User.id == parent_id).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail='Parent not found')
+    profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_id).first()
+    if not profile:
+        profile = ParentProfile(user_id=parent_id)
+        db.add(profile)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(profile, field, value)
+    db.commit()
+    db.refresh(profile)
+    return {'msg': 'Profile saved', 'profile_id': profile.id}
+
+
+# ── Trusted Contacts ─────────────────────────────────────────────
+
+class TrustedContactRequest(BaseModel):
+    name: str
+    surname: Optional[str] = None
+    relation: Optional[str] = None
+    mobile: Optional[str] = None
+    country_code: Optional[str] = None
+    home_phone: Optional[str] = None
+    work_phone: Optional[str] = None
+    address: Optional[str] = None
+    email: Optional[str] = None
+
+
+@router.get('/parent/{parent_id}/trusted-contacts')
+def get_trusted_contacts(parent_id: int, db: Session = Depends(get_db)):
+    profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_id).first()
+    if not profile:
+        return []
+    return [
+        {
+            'id': c.id,
+            'name': c.name,
+            'surname': c.surname,
+            'relation': c.relation,
+            'mobile': c.mobile,
+            'country_code': c.country_code,
+            'home_phone': c.home_phone,
+            'work_phone': c.work_phone,
+            'address': c.address,
+            'email': c.email,
+        }
+        for c in profile.trusted_contacts
+    ]
+
+
+@router.post('/parent/{parent_id}/trusted-contacts')
+def add_trusted_contact(parent_id: int, data: TrustedContactRequest, db: Session = Depends(get_db)):
+    profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_id).first()
+    if not profile:
+        # Auto-create profile if it doesn't exist yet
+        profile = ParentProfile(user_id=parent_id)
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    contact = TrustedContact(parent_profile_id=profile.id, **data.model_dump())
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    return {'msg': 'Trusted contact added', 'contact_id': contact.id}
+
+
+@router.delete('/parent/{parent_id}/trusted-contacts/{contact_id}')
+def delete_trusted_contact(parent_id: int, contact_id: int, db: Session = Depends(get_db)):
+    profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail='Profile not found')
+    contact = db.query(TrustedContact).filter(
+        TrustedContact.id == contact_id,
+        TrustedContact.parent_profile_id == profile.id
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail='Contact not found')
+    db.delete(contact)
+    db.commit()
+    return {'msg': 'Contact deleted'}
+
+
+class WhatsAppRequest(BaseModel):
+    message: str
+    include_trusted_contacts: bool = False
+
+
+@router.post('/parent/{parent_id}/whatsapp')
+def send_whatsapp_to_parent(parent_id: int, data: WhatsAppRequest, db: Session = Depends(get_db)):
+    """
+    Send a WhatsApp message to a parent and optionally all their trusted contacts.
+    Requires TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN in .env.
+    """
+    profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail='Parent profile not found')
+
+    results = []
+    errors = []
+
+    # Send to parent
+    if profile.mobile_phone:
+        try:
+            sid = send_whatsapp(
+                to_number=profile.mobile_phone,
+                country_code=profile.country_code or '',
+                body=data.message,
+            )
+            results.append({'target': 'parent', 'sid': sid})
+        except Exception as e:
+            errors.append({'target': 'parent', 'error': str(e)})
+    else:
+        errors.append({'target': 'parent', 'error': 'No mobile number on profile'})
+
+    # Send to trusted contacts if requested
+    if data.include_trusted_contacts:
+        for contact in profile.trusted_contacts:
+            if contact.mobile:
+                try:
+                    sid = send_whatsapp(
+                        to_number=contact.mobile,
+                        country_code=contact.country_code or '',
+                        body=data.message,
+                    )
+                    results.append({
+                        'target': f'{contact.name} {contact.surname or ""}'.strip(),
+                        'sid': sid,
+                    })
+                except Exception as e:
+                    errors.append({
+                        'target': f'{contact.name} {contact.surname or ""}'.strip(),
+                        'error': str(e),
+                    })
+
+    if not results and errors:
+        raise HTTPException(status_code=502, detail={'sent': results, 'errors': errors})
+
+    return {'sent': results, 'errors': errors}
+
+
+# ── Escalation (parent unreachable → trusted contacts) ───────────────────────
+
+class EscalateRequest(BaseModel):
+    child_name: str
+    message: str
+    school_name: str = "the school"
+    channels: list[str] = ["whatsapp", "call", "email"]  # which channels to use
+
+
+@router.post('/parent/{parent_id}/escalate')
+def escalate_to_contacts(
+    parent_id: int,
+    data: EscalateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Try to reach the parent via all requested channels.
+    If the parent has no mobile/email, or as a parallel fallback,
+    also send to all emergency contacts.
+    Returns a per-recipient, per-channel result log.
+    """
+    profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail='Parent profile not found')
+
+    parent_user = db.query(User).filter(User.id == parent_id).first()
+    parent_name = parent_user.name if parent_user else 'Parent'
+
+    spoken = (
+        f"Hello, this is an urgent message from {data.school_name} regarding "
+        f"{data.child_name}. {data.message} Please contact the school immediately."
+    )
+
+    results = []
+
+    def _try(target_label: str, number: str, cc: str, email: str | None):
+        """Attempt all requested channels for one recipient. Appends to results."""
+        if 'whatsapp' in data.channels and number:
+            try:
+                sid = send_whatsapp(number, cc, f"🚨 *{data.school_name}* – Urgent\n\n{data.message}")
+                results.append({'target': target_label, 'channel': 'whatsapp', 'status': 'sent', 'sid': sid})
+            except Exception as e:
+                results.append({'target': target_label, 'channel': 'whatsapp', 'status': 'failed', 'error': str(e)})
+
+        if 'call' in data.channels and number:
+            try:
+                sid = make_voice_call(number, cc, spoken)
+                results.append({'target': target_label, 'channel': 'call', 'status': 'sent', 'sid': sid})
+            except Exception as e:
+                results.append({'target': target_label, 'channel': 'call', 'status': 'failed', 'error': str(e)})
+
+        if 'email' in data.channels and email:
+            try:
+                send_alert_email(
+                    to_email=email,
+                    recipient_name=target_label,
+                    child_name=data.child_name,
+                    message=data.message,
+                    school_name=data.school_name,
+                )
+                results.append({'target': target_label, 'channel': 'email', 'status': 'sent'})
+            except Exception as e:
+                results.append({'target': target_label, 'channel': 'email', 'status': 'failed', 'error': str(e)})
+
+    # 1. Try the parent
+    _try(
+        target_label=parent_name,
+        number=profile.mobile_phone or '',
+        cc=profile.country_code or '',
+        email=profile.email or (parent_user.email if parent_user else None),
+    )
+
+    # 2. Always also try all trusted contacts as parallel escalation
+    for contact in profile.trusted_contacts:
+        label = f"{contact.name} {contact.surname or ''}".strip()
+        _try(
+            target_label=label,
+            number=contact.mobile or '',
+            cc=contact.country_code or '',
+            email=contact.email,
+        )
+
+    sent = [r for r in results if r['status'] == 'sent']
+    if not sent:
+        raise HTTPException(
+            status_code=502,
+            detail={'msg': 'All channels failed', 'log': results},
+        )
+
+    return {'log': results, 'sent_count': len(sent)}
 
 
 app = FastAPI(title='Colepago API')

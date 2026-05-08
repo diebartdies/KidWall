@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ColePago | Billetera Escolar Inteligente</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap nav">
+      <div class="brand">
+        <img src="/static/school-pass-backpack-icon-colorful.svg" alt="ColePago" />
+        <span>ColePago</span>
+      </div>
+      <div class="lang" aria-label="Language selector">
+        <button id="btn-es" class="active">ES</button>
+        <button id="btn-en">EN</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <article class="hero-card">
+        <h1 data-i18n="h1">Billetera digital para escuelas, padres y niños</h1>
+        <p data-i18n="sub">Los padres distribuyen dinero por buckets de gasto y el backend solo maneja tokens virtuales, nunca dinero real.</p>
+
+        <div class="badges">
+          <span class="badge" data-i18n="b1">Backend: FastAPI + PostgreSQL</span>
+          <span class="badge" data-i18n="b2">Pagos: Stripe / Mercado Pago</span>
+          <span class="badge" data-i18n="b3">IA: biometría y control</span>
+        </div>
+
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#arquitectura" data-i18n="cta1">Ver arquitectura</a>
+          <a class="btn btn-outline" id="brochure-link" href="/brochure/colepago_onepage_brochure_es.md" data-i18n="cta2">Descargar brochure ES</a>
+        </div>
+      </article>
+
+      <aside class="hero-visual panel">
+        <img src="/brochure/architecture_diagram_es.png" alt="Arquitectura ColePago" />
+        <img src="/brochure/architecture_diagram.png" alt="Diagrama de apps" />
+      </aside>
+    </section>
+
+    <section class="section">
+      <h2 data-i18n="sec1">Cómo funciona</h2>
+      <p data-i18n="sec1p">Flujo seguro para convertir dinero real en tokens de uso escolar.</p>
+      <div class="grid-3" style="margin-top:14px;">
+        <article class="card">
+          <h3 data-i18n="step1t">1) Carga de saldo</h3>
+          <p data-i18n="step1p">Padres cargan la billetera vía Stripe o Mercado Pago con TLS.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="step2t">2) Distribución por buckets</h3>
+          <p data-i18n="step2p">Asignación por categorías: comedor, transporte, útiles, emergencias.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="step3t">3) Uso controlado</h3>
+          <p data-i18n="step3p">Niños usan tokens y los padres reciben notificaciones y reportes.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="arquitectura" class="section">
+      <h2 data-i18n="sec2">Arquitectura</h2>
+      <p data-i18n="sec2p">Separación clara entre pagos reales y economía virtual interna.</p>
+      <div class="panel arch" style="margin-top:14px;">
+        <img src="/brochure/architecture_diagram.png" alt="Architecture diagram" />
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 data-i18n="sec3">Indicadores</h2>
+      <p data-i18n="sec3p">Ejemplo de distribución y consumo por buckets para decisiones familiares.</p>
+      <div class="panel" style="margin-top:14px; padding:16px; height:320px;">
+        <canvas id="bucket-chart"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap footer" data-i18n="f">
+    ColePago 2026 · Seguridad, trazabilidad y educación financiera
+  </footer>
+</body>
+</html>

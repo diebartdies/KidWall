@@ -24,6 +24,8 @@ def _ensure_requirements():
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from colepago.api.router import router as api_router
 
 app = FastAPI(title="ColePago API", description="KidWall - Kids' Wallet System", version="1.0.0")
@@ -38,9 +40,21 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api")
 
+static_dir = Path(__file__).parent / "static"
+brochure_dir = Path(__file__).parent / "brochure"
+
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+if brochure_dir.exists():
+    app.mount("/brochure", StaticFiles(directory=str(brochure_dir)), name="brochure")
+
 
 @app.get("/")
 def root():
+    index_file = static_dir / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
     return {
         "service": "ColePago API",
         "status": "ok",

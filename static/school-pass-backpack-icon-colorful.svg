@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="ColePago logo">
+  <defs>
+    <clipPath id="pigBody" clipPathUnits="userSpaceOnUse">
+      <ellipse cx="126" cy="133" rx="68" ry="52"/>
+    </clipPath>
+    <linearGradient id="coinGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE878"/>
+      <stop offset="100%" stop-color="#CC9900"/>
+    </linearGradient>
+    <linearGradient id="handGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D8D4D4"/>
+      <stop offset="100%" stop-color="#A89E9E"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="256" height="256" rx="32" fill="#EEF6EE"/>
+
+  <!-- ===== PARENT HAND (top, fingers up) ===== -->
+  <rect x="87"  y="6"  width="12" height="26" rx="6" fill="url(#handGrad)" stroke="#888" stroke-width="1"/>
+  <rect x="103" y="3"  width="12" height="26" rx="6" fill="url(#handGrad)" stroke="#888" stroke-width="1"/>
+  <rect x="119" y="3"  width="12" height="26" rx="6" fill="url(#handGrad)" stroke="#888" stroke-width="1"/>
+  <rect x="135" y="6"  width="12" height="26" rx="6" fill="url(#handGrad)" stroke="#888" stroke-width="1"/>
+  <rect x="80"  y="22" width="76" height="30" rx="12" fill="url(#handGrad)" stroke="#888" stroke-width="1.5"/>
+  <rect x="64"  y="26" width="22" height="16" rx="8"  fill="url(#handGrad)" stroke="#888" stroke-width="1"/>
+
+  <!-- Coin dropping into pig -->
+  <circle cx="128" cy="62" r="10" fill="url(#coinGrad)" stroke="#B8860B" stroke-width="2"/>
+  <text x="128" y="66" text-anchor="middle" font-family="Arial Black,sans-serif" font-size="7" font-weight="900" fill="#6B4400">VC</text>
+
+  <!-- ===== PIG (Minecraft pixel art) ===== -->
+
+  <!-- Coin slot -->
+  <rect x="118" y="76" width="20" height="6" rx="2" fill="#0D2B0D"/>
+
+  <!-- Ear (stacked pixel blocks, top-right) -->
+  <rect x="170" y="82" width="12" height="10" fill="#4A9A4A"/>
+  <rect x="178" y="74" width="10" height="10" fill="#3A7A3A"/>
+  <rect x="184" y="67" width="8"  height="8"  fill="#2A5A2A"/>
+
+  <!-- Pig body base -->
+  <ellipse cx="126" cy="133" rx="68" ry="52" fill="#6CC56C"/>
+
+  <!-- Pixel texture — scattered blocks clipped inside pig ellipse -->
+  <!-- row y=82 -->
+  <rect x="106" y="82"  width="12" height="12" fill="#3A7A3A" clip-path="url(#pigBody)"/>
+  <rect x="130" y="82"  width="12" height="12" fill="#A8D040" clip-path="url(#pigBody)"/>
+  <rect x="154" y="82"  width="12" height="12" fill="#2A5A2A" clip-path="url(#pigBody)"/>
+  <!-- row y=94 -->
+  <rect x="58"  y="94"  width="12" height="12" fill="#3A7A3A" clip-path="url(#pigBody)"/>
+  <rect x="82"  y="94"  width="12" height="12" fill="#1A3A1A" clip-path="url(#pigBody)"/>
+  <rect x="106" y="94"  width="12" height="12" fill="#D8ECC0" clip-path="url(#pigBody)"/>
+  <rect x="130" y="94"  width="12" height="12" fill="#3A7A3A" clip-path="url(#pigBody)"/>
+  <rect x="154" y="94"  width="12" height="12" fill="#A8D040" clip-path="url(#pigBody)"/>
+  <rect x="178" y="94"  width="12" height="12" fill="#1A3A1A" clip-path="url(#pigBody)"/>
+  <!-- row y=106 -->
+  <rect x="70"  y="106" width="12" height="12" fill="#A8D040" clip-path="url(#pigBody)"/>
+  <rect x="94"  y="106" width="12" height="12" fill="#4A9A4A" clip-path="url(#pigBody)"/>
+  <rect x="118" y="106" width="12" height="12" fill="#2A5A2A" clip-path="url(#pigBody)"/>
+  <rect x="142" y="106" width="12" height="12" fill="#D8ECC0" clip-path="url(#pigBody)"/>
+  <rect x="166" y="106" width="12" height="12" fill="#3A7A3A" clip-path="url(#pigBody)"/>
+  <!-- row y=118 -->
+  <rect x="58"  y="118" width="12" height="12" fill="#4A9A4A" clip-path="url(#pigBody)"/>
+  <rect x="82"  y="118" width="12" height="12" fill="#3A7A3A" clip-path="url(#pigBody)"/>
+  <rect x="106" y="118" width="12" height="12" fill="#1A3A1A" clip-path="url(#pigBody)"/>
+  <rect x="130" y="118" width="12" height="12" fill="#A8D040" clip-path="url(#pigBody)"/>
+  <rect x="154" y="118" width="12" height="12" fill="#4A9A4A" clip-path="url(#pigBody)"/>
+  <rect x="178" y="118" width="12" height="12" fill="#2A5A2A" clip-path="url(#pigBody)"/>
+  <!-- row y=130 -->
+  <rect x="70"  y="130" width="12" height="12" fill="#D8ECC0" clip-path="url(#pigBody)"/>
+  <rect x="94"  y="130" width="12" height="12" fill="#2A5A2A" clip-path="url(#pigBody)"/>
+  <rect x="118" y="130" width="12" height="12" fill="#3A7A3A" clip-path="url(#pigBody)"/>
+  <rect x="142" y="130" width="12" height="12" fill="#1A3A1A" clip-path="url(#pigBody)"/>
+  <rect x="166" y="130" width="12" height="12" fill="#A8D040" clip-path="url(#pigBody)"/>
+  <!-- row y=142 -->
+  <rect x="58"  y="142" width="12" height="12" fill="#3A7A3A" clip-path="url(#pigBody)"/>
+  <rect x="82"  y="142" width="12" height="12" fill="#A8D040" clip-path="url(#pigBody)"/>
+  <rect x="106" y="142" width="12" height="12" fill="#4A9A4A" clip-path="url(#pigBody)"/>
+  <rect x="130" y="142" width="12" height="12" fill="#D8ECC0" clip-path="url(#pigBody)"/>
+  <rect x="154" y="142" width="12" height="12" fill="#3A7A3A" clip-path="url(#pigBody)"/>
+  <rect x="178" y="142" width="12" height="12" fill="#1A3A1A" clip-path="url(#pigBody)"/>
+  <!-- row y=154 -->
+  <rect x="70"  y="154" width="12" height="12" fill="#1A3A1A" clip-path="url(#pigBody)"/>
+  <rect x="94"  y="154" width="12" height="12" fill="#D8ECC0" clip-path="url(#pigBody)"/>
+  <rect x="118" y="154" width="12" height="12" fill="#2A5A2A" clip-path="url(#pigBody)"/>
+  <rect x="142" y="154" width="12" height="12" fill="#A8D040" clip-path="url(#pigBody)"/>
+  <rect x="166" y="154" width="12" height="12" fill="#4A9A4A" clip-path="url(#pigBody)"/>
+  <!-- row y=166 -->
+  <rect x="82"  y="166" width="12" height="12" fill="#3A7A3A" clip-path="url(#pigBody)"/>
+  <rect x="106" y="166" width="12" height="12" fill="#A8D040" clip-path="url(#pigBody)"/>
+  <rect x="130" y="166" width="12" height="12" fill="#1A3A1A" clip-path="url(#pigBody)"/>
+  <rect x="154" y="166" width="12" height="12" fill="#D8ECC0" clip-path="url(#pigBody)"/>
+
+  <!-- Eye (pixel square) -->
+  <rect x="160" y="110" width="10" height="10" fill="#0A180A" clip-path="url(#pigBody)"/>
+
+  <!-- Tail (pixel curl, left side) -->
+  <rect x="54"  y="128" width="8" height="8" fill="#3A7A3A"/>
+  <rect x="46"  y="120" width="8" height="8" fill="#4A9A4A"/>
+  <rect x="50"  y="112" width="8" height="8" fill="#3A7A3A"/>
+  <rect x="58"  y="107" width="8" height="8" fill="#2A5A2A"/>
+
+  <!-- Snout (right side, pixel black rectangle + nostrils) -->
+  <rect x="186" y="127" width="24" height="16" fill="#111111"/>
+  <rect x="189" y="130" width="7"  height="6"  fill="#2A0A0A"/>
+  <rect x="200" y="130" width="7"  height="6"  fill="#2A0A0A"/>
+
+  <!-- Legs (4 pixel rectangles at bottom) -->
+  <rect x="80"  y="180" width="16" height="14" fill="#3A7A3A"/>
+  <rect x="104" y="180" width="16" height="14" fill="#3A7A3A"/>
+  <rect x="130" y="180" width="16" height="14" fill="#3A7A3A"/>
+  <rect x="154" y="180" width="16" height="14" fill="#3A7A3A"/>
+
+  <!-- Coin coming out bottom -->
+  <circle cx="128" cy="200" r="10" fill="url(#coinGrad)" stroke="#B8860B" stroke-width="2"/>
+  <text x="128" y="204" text-anchor="middle" font-family="Arial Black,sans-serif" font-size="7" font-weight="900" fill="#6B4400">VC</text>
+
+  <!-- ===== CHILD HAND (bottom, fingers down) ===== -->
+  <rect x="80"  y="202" width="76" height="30" rx="12" fill="url(#handGrad)" stroke="#888" stroke-width="1.5"/>
+  <rect x="64"  y="212" width="22" height="16" rx="8"  fill="url(#handGrad)" stroke="#888" stroke-width="1"/>
+  <rect x="87"  y="222" width="12" height="26" rx="6"  fill="url(#handGrad)" stroke="#888" stroke-width="1"/>
+  <rect x="103" y="225" width="12" height="26" rx="6"  fill="url(#handGrad)" stroke="#888" stroke-width="1"/>
+  <rect x="119" y="225" width="12" height="26" rx="6"  fill="url(#handGrad)" stroke="#888" stroke-width="1"/>
+  <rect x="135" y="222" width="12" height="26" rx="6"  fill="url(#handGrad)" stroke="#888" stroke-width="1"/>
+</svg>
