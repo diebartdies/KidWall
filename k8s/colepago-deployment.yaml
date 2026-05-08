@@ -18,7 +18,19 @@ spec:
       - name: colepago
         image: colepago:latest
         ports:
-        - containerPort: 8000
+        - containerPort: 8010
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8010
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8010
+          initialDelaySeconds: 5
+          periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
@@ -30,5 +42,5 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 8000
+      targetPort: 8010
   type: ClusterIP

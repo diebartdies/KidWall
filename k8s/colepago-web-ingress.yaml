@@ -3,10 +3,10 @@ kind: Ingress
 metadata:
   name: colepago-web-ingress
   annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
-  - host: colepago-web.srsrv.net.ar
+  - host: colepago-web.drsrv.net.ar
     http:
       paths:
       - path: /
@@ -18,5 +18,5 @@ spec:
               number: 80
   tls:
   - hosts:
-    - colepago-web.srsrv.net.ar
-    secretName: colepago-web-srsrv-tls
+    - colepago-web.drsrv.net.ar
+    secretName: colepago-web-drsrv-tls

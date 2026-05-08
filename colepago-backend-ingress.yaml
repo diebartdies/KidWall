@@ -3,9 +3,11 @@ kind: Ingress
 metadata:
   name: colepago-backend-ingress
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
 spec:
+  ingressClassName: nginx
   rules:
   - host: api.drsrv.net.ar
     http:

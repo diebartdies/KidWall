@@ -1,4 +1,4 @@
-# PyesowerShell script to automate build, sync, container, and deployment for KidWall
+# PowerShell script to automate build, sync, container, and deployment for KidWall
 
 # Ensure we always run from the KidWall root regardless of where the script was invoked from
 Set-Location -Path $PSScriptRoot
@@ -10,7 +10,7 @@ if (Test-Path ".env") {
     Copy-Item ".env" "$envBackupDir\.env.backup" -Force
     Write-Host ".env backed up to $envBackupDir\.env.backup"
 } else {
-    Write-Warning ".env not found — skipping backup."
+    Write-Warning ".env not found - skipping backup."
 }
 
 # 1. Upgrade Flutter if needed and build/recompile APKs
@@ -102,5 +102,16 @@ Set-Location -Path "d:/kidwall/terraform"
 terraform init
 terraform apply -auto-approve
 Set-Location -Path "d:/kidwall"
+
+# 7. Update EasyDNS dynamic DNS records (if configured)
+$dyndnsScript = Join-Path $PSScriptRoot "update_easydns_dyndns.ps1"
+if (Test-Path $dyndnsScript) {
+    try {
+        Write-Host "Updating EasyDNS dynamic DNS records..."
+        & $dyndnsScript
+    } catch {
+        Write-Warning "EasyDNS update skipped/failed: $($_.Exception.Message)"
+    }
+}
 
 Write-Host "All steps completed."

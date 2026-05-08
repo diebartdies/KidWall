@@ -16,7 +16,7 @@ spec:
       - name: backend
         image: your-backend-image:latest  # Replace with your image
         ports:
-        - containerPort: 8000             # Adjust to your backend port
+        - containerPort: 8010             # Backend port
         resources:
           requests:
             cpu: "250m"
@@ -26,14 +26,14 @@ spec:
             memory: "512Mi"
         livenessProbe:
           httpGet:
-            path: /healthz               # Adjust to your health endpoint
-            port: 8000
+            path: /health               # FastAPI health endpoint
+            port: 8010
           initialDelaySeconds: 10
           periodSeconds: 15
         readinessProbe:
           httpGet:
-            path: /healthz
-            port: 8000
+            path: /health
+            port: 8010
           initialDelaySeconds: 5
           periodSeconds: 10
         env:
@@ -51,5 +51,5 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 8000
+      targetPort: 8010
   type: ClusterIP
