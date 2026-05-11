@@ -86,6 +86,28 @@ class RegisterRequest(BaseModel):
     username: Optional[str] = None
 
 
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+def _auth_payload(user: User) -> dict:
+    token = secrets.token_urlsafe(32)
+    role = user.role.value if hasattr(user.role, 'value') else user.role
+    return {
+        'access_token': token,
+        'token': token,
+        'token_type': 'bearer',
+        'id': user.id,
+        'user_id': user.id,
+        # Kept for the current Flutter app, which still names the id parent_id.
+        'parent_id': user.id,
+        'role': role,
+        'name': user.name,
+        'email': user.email,
+    }
+
+
 @router.get('/ping')
 async def ping():
     return {'msg': 'pong'}
@@ -131,7 +153,17 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    return {'msg': 'Registration successful', 'role': data.role}
+    payload = _auth_payload(user)
+    payload['msg'] = 'Registration successful'
+    return payload
+
+
+@router.post('/auth/login')
+def login(data: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user or not verify_password(data.password, user.password_hash):
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    return _auth_payload(user)
 
 
 @router.post('/wallet/fund')

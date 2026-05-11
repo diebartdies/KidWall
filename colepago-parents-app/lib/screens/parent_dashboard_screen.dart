@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'fund_wallet_screen.dart';
 import 'add_child_screen.dart';
+import 'parent_profile_form_screen.dart';
 import '../api_service.dart';
 
 class ParentDashboardScreen extends StatefulWidget {
@@ -72,11 +73,11 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-        // Ensure c['id'] is unique for each child (debug only)
-        assert(
-          children.map((c) => c['id'] as int).toSet().length == children.length,
-          'Each child id must be unique.',
-        );
+    // Ensure c['id'] is unique for each child (debug only)
+    assert(
+      children.map((c) => c['id'] as int).toSet().length == children.length,
+      'Each child id must be unique.',
+    );
     return Scaffold(
       appBar: AppBar(title: const Text('Parent Dashboard')),
       drawer: Drawer(
@@ -94,8 +95,16 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
               leading: const Icon(Icons.settings),
               title: const Text('Parent Config'),
               onTap: () {
-                // TODO: Implement parent config
                 Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ParentProfileFormScreen(
+                      token: widget.token,
+                      parentId: widget.parentId,
+                    ),
+                  ),
+                );
               },
             ),
             ListTile(

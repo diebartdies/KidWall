@@ -50,18 +50,49 @@ git checkout colepagokidwall
 git push -f origin colepagokidwall
 git checkout main
 
-# 3. Start local DB container, backup, and run migrations
-Write-Host "Starting local Postgres container..."
+# 3. Start or reuse local DB container, backup, and run migrations
+function Test-PostgresReady {
+    param([Parameter(Mandatory = $true)][string]$ContainerName)
+
+    $ready = docker exec $ContainerName pg_isready -U colepago 2>&1
+    return $ready -match "accepting connections"
+}
+
+function Get-RunningPostgresContainer {
+    $kidwallRunning = (docker inspect -f '{{.State.Running}}' kidwall_db 2>$null) -eq "true"
+    if ($kidwallRunning -and (Test-PostgresReady -ContainerName "kidwall_db")) {
+        return "kidwall_db"
+    }
+
+    $published5432 = docker ps --filter "publish=5432" --format "{{.Names}}" | Select-Object -First 1
+    if ($published5432 -and (Test-PostgresReady -ContainerName $published5432)) {
+        return $published5432
+    }
+
+    return $null
+}
+
+Write-Host "Preparing local Postgres container..."
 Set-Location -Path "d:/kidwall"
-docker-compose up -d db
+$dbContainer = Get-RunningPostgresContainer
+if ($dbContainer) {
+    Write-Host "Using running Postgres container: $dbContainer"
+} else {
+    Write-Host "Starting local Postgres container..."
+    docker-compose up -d db
+    $dbContainer = "kidwall_db"
+}
 
 Write-Host "Waiting for Postgres to be ready before backup..."
 $retries = 10
 while ($retries -gt 0) {
-    $ready = docker exec kidwall_db pg_isready -U colepago 2>&1
-    if ($ready -match "accepting connections") { break }
+    if (Test-PostgresReady -ContainerName $dbContainer) { break }
     Start-Sleep -Seconds 2
     $retries--
+}
+if ($retries -le 0) {
+    Write-Warning "Postgres container '$dbContainer' is not ready - aborting deployment to protect data."
+    exit 1
 }
 
 $backupDir = "D:\backups\colepago"
@@ -69,7 +100,7 @@ if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $backupFile = "$backupDir/colepago_$timestamp.sql"
 Write-Host "Backing up database to $backupFile ..."
-docker exec kidwall_db pg_dump -U colepago colepago | Out-File -Encoding utf8 $backupFile
+docker exec $dbContainer pg_dump -U colepago colepago | Out-File -Encoding utf8 $backupFile
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Backup saved: $backupFile"
     # Keep only the 10 most recent backups
@@ -85,10 +116,13 @@ if ($LASTEXITCODE -eq 0) {
 Write-Host "Waiting for Postgres to be ready..."
 $retries = 10
 while ($retries -gt 0) {
-    $ready = docker exec kidwall_db pg_isready -U colepago 2>&1
-    if ($ready -match "accepting connections") { break }
+    if (Test-PostgresReady -ContainerName $dbContainer) { break }
     Start-Sleep -Seconds 2
     $retries--
+}
+if ($retries -le 0) {
+    Write-Warning "Postgres container '$dbContainer' stopped responding - aborting deployment to protect data."
+    exit 1
 }
 
 Write-Host "Running Alembic migrations..."
@@ -141,7 +175,8 @@ if ($apkBuildSucceeded) {
 # ============================================================
 $sep = "=" * 62
 $publicIp = try { (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5) } catch { "unavailable" }
-$dbRunning  = (docker inspect -f '{{.State.Running}}' kidwall_db 2>$null) -eq "true"
+$summaryDbContainer = if ($dbContainer) { $dbContainer } else { "kidwall_db" }
+$dbRunning  = (docker inspect -f '{{.State.Running}}' $summaryDbContainer 2>$null) -eq "true"
 $backendPid = (Get-NetTCPConnection -LocalPort 8010 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
 $ingressIp  = "172.18.0.5"
 
@@ -174,7 +209,7 @@ if ($backendPid) {
 
 Write-Host ""
 Write-Host "  DATABASE (PostgreSQL)" -ForegroundColor Yellow
-Write-Host "    Container : kidwall_db"
+Write-Host "    Container : $summaryDbContainer"
 Write-Host "    Host      : localhost:5432"
 Write-Host "    DB name   : colepago"
 Write-Host "    User      : colepago"

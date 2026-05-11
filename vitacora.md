@@ -367,11 +367,13 @@ School import notes:
 - The downloaded PSS methodological frame CSV only had tracking fields and was not used for the main private-school import.
 - The user's open `pss2122_pu.csv` was inspected but not needed for this first import because EDGE private geocodes provided direct school identity/address/location fields.
 
-## 2026-05-09
+## Work Log
 
-### Deployment File Note
+### 2026-05-11
 
-- Confirmed on 2026-05-11 that `D:\kidwall\.github\workflows\deploy_all.yml` does not exist anymore.
+#### Deployment File Note
+
+- Confirmed that `D:\kidwall\.github\workflows\deploy_all.yml` does not exist anymore.
 - Do not reference that GitHub Actions workflow as an active deployment path.
 - Current deployment/start files observed at the project root include:
   - `deploy_all.ps1`
@@ -385,7 +387,59 @@ School import notes:
 - Pending:
   - Decide whether deployment should be managed by local PowerShell scripts, Kubernetes manifests, or a recreated GitHub Actions workflow.
 
-### APK Build/Deploy Consistency Check
+#### Windows Python3 Compatibility
+
+- Found Windows host has `python.exe` and `py.exe`, but no `python3.exe` on PATH.
+- Added local app shim:
+  - `colepago-parents-app/tools/python3.cmd`
+- Updated build scripts to prepend the app `tools` directory to PATH:
+  - `colepago-parents-app/build_both_apks.ps1`
+  - `colepago-parents-app/build_kids_apk.ps1`
+- Updated VS Code terminal environment for the app:
+  - `colepago-parents-app/.vscode/settings.json`
+- Fixed stray plain-text line in `build_kids_apk.ps1`.
+- Verification:
+  - `python3 --version` resolves through the local shim and reports Python 3.14.2.
+  - VS Code settings JSON parses successfully.
+
+#### Postgres Deployment Port Conflict
+
+- Deployment failed because `postgres_colepago` already owned host port `5432`.
+- `docker-compose up -d db` tried to start `kidwall_db` on the same port, leaving `kidwall_db` in `Created` state.
+- Backup then targeted `kidwall_db`, which was not running.
+- Updated `deploy_all.ps1`:
+  - detects a healthy running `kidwall_db` first
+  - otherwise detects a healthy container published on `5432`
+  - reuses that container for readiness checks and `pg_dump`
+  - aborts clearly if no ready database is found
+  - reports the actual database container in the deployment summary
+- Verification:
+  - `postgres_colepago` accepts connections for user `colepago`.
+  - Database `colepago` is present.
+  - PowerShell syntax parse passed.
+
+#### Parent App Navigation And Backend Auth
+
+- Wired parent dashboard drawer item `Parent Config` to the existing profile form:
+  - `colepago-parents-app/lib/screens/parent_dashboard_screen.dart`
+- Added backend auth compatibility for the Flutter app:
+  - `POST /api/auth/login`
+  - registration now returns the same auth payload shape Flutter expects
+  - payload includes `token`, `access_token`, `token_type`, `id`, `user_id`, `parent_id`, `role`, `name`, and `email`
+- Files changed:
+  - `colepago/api/router.py`
+  - `colepago-parents-app/lib/screens/parent_dashboard_screen.dart`
+- Verification:
+  - `dart analyze` passed for the Flutter app.
+  - Python compile check passed for `colepago/api/router.py`.
+  - FastAPI route check confirmed `/api/auth/login` and `/api/auth/register` are mounted.
+- Pending:
+  - Replace placeholder generated bearer token with durable signed auth if/when protected endpoints enforce authorization.
+  - Add role-based navigation for merchant users.
+
+### 2026-05-09
+
+#### APK Build/Deploy Consistency Check
 
 - Reviewed `deploy_all.ps1` and `colepago-parents-app/build_both_apks.ps1` for APK build compatibility.
 - Found issue:
@@ -409,7 +463,7 @@ School import notes:
 - Important:
   - No new APK build was started during this check because the user was already running a build.
 
-### Gradle APK Build Crash Diagnosis
+#### Gradle APK Build Crash Diagnosis
 
 - User ran `deploy_all.ps1` and the APK build failed during `assembleKidsRelease`.
 - Crash log inspected:
@@ -438,7 +492,7 @@ School import notes:
 - Important:
   - The failed output still showed `Checking for new Flutter version...`, which means it was run from the older script version or before the latest patch. The current `deploy_all.ps1` says `Checking Flutter version...` and does not run `flutter upgrade`.
 
-### Dependency Setup
+#### Dependency Setup
 
 - Installed missing Python dependencies from `colepago/requirements.txt` into the existing virtual environment.
 - Verified dependency health with:
@@ -448,7 +502,7 @@ School import notes:
 - Note:
   - Payment-related tests were not run automatically to avoid accidental real external service calls.
 
-### Brochure Review
+#### Brochure Review
 
 - Reviewed `D:\kidwall\brochure`.
 - Found English and Spanish ColePago/StudentWallet brochure materials, PDFs, images, diagrams, and PDF generation scripts.
@@ -465,7 +519,7 @@ School import notes:
   - Improve Spanish PDF accent handling.
   - Verify public security claims against actual backend/database behavior.
 
-### Email Notifications
+#### Email Notifications
 
 - Configured SMTP for EasyDNS in `.env`.
 - Verified SMTP login successfully without sending email.
@@ -481,7 +535,7 @@ School import notes:
 - Security note:
   - Mail credentials were provided during configuration. The password should be rotated after testing.
 
-### Parent And Trusted Contact Test Data
+#### Parent And Trusted Contact Test Data
 
 - Created local seed scripts:
   - `seed_test_contacts.py`
@@ -502,7 +556,7 @@ School import notes:
   - `d4e5f6a7b8c9_add_parent_username_and_address_details.py`
 - Verified database read-back.
 
-### Registration And Password Hashing
+#### Registration And Password Hashing
 
 - Replaced the failing `passlib` bcrypt path in the active API router with direct `bcrypt` hashing/checking.
 - Reason:
@@ -517,7 +571,7 @@ School import notes:
   - `parent`
   - `merchant`
 
-### Parent/Merchant App Direction
+#### Parent/Merchant App Direction
 
 - Confirmed architecture direction:
   - Parents and merchants should use the same APK.
@@ -530,7 +584,7 @@ School import notes:
   - Add merchant payout setup UI.
   - Add trusted contact UI if incomplete.
 
-### Payment Flow Clarification
+#### Payment Flow Clarification
 
 - Clarified that parent deposits real money through payment providers.
 - Backend records internal wallet/ledger value.
@@ -539,7 +593,7 @@ School import notes:
 - Backend deducts from parent wallet and credits merchant receivable.
 - Real money payout to merchant must happen through Mercado Pago, Stripe, or bank/manual payout.
 
-### Payment Gateway And Ledger Foundation
+#### Payment Gateway And Ledger Foundation
 
 - Added provider-neutral ledger/gateway foundation.
 - New model concepts:
@@ -568,7 +622,7 @@ School import notes:
 - Current migration head:
   - `e5f6a7b8c9d0`
 
-### Infrastructure Direction
+#### Infrastructure Direction
 
 - Clarified Kubernetes/Ingress/Gateway responsibilities:
   - Ingress is the public HTTPS front door.
