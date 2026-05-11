@@ -115,3 +115,116 @@ if (Test-Path $dyndnsScript) {
 }
 
 Write-Host "All steps completed."
+
+# ============================================================
+# DEPLOYMENT SUMMARY
+# ============================================================
+$sep = "=" * 62
+$publicIp = try { (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5) } catch { "unavailable" }
+$dbRunning  = (docker inspect -f '{{.State.Running}}' kidwall_db 2>$null) -eq "true"
+$backendPid = (Get-NetTCPConnection -LocalPort 8010 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
+$ingressIp  = "172.18.0.5"
+
+Write-Host ""
+Write-Host $sep -ForegroundColor Cyan
+Write-Host "  COLEPAGO DEPLOYMENT SUMMARY  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
+Write-Host $sep -ForegroundColor Cyan
+
+Write-Host ""
+Write-Host "  PUBLIC IP" -ForegroundColor Yellow
+Write-Host "    $publicIp"
+
+Write-Host ""
+Write-Host "  WEB / STATIC FRONTEND" -ForegroundColor Yellow
+Write-Host "    HTTPS : https://colepago-web.drsrv.net.ar"
+Write-Host "    HTTP  : http://colepago-web.drsrv.net.ar"
+Write-Host "    Local : http://localhost:8010"
+
+Write-Host ""
+Write-Host "  API BACKEND (FastAPI)" -ForegroundColor Yellow
+Write-Host "    HTTPS : https://api.drsrv.net.ar/api"
+Write-Host "    HTTP  : http://api.drsrv.net.ar/api"
+Write-Host "    Local : http://localhost:8010/api"
+Write-Host "    Docs  : http://localhost:8010/docs"
+if ($backendPid) {
+    Write-Host "    Status: RUNNING (PID $backendPid)" -ForegroundColor Green
+} else {
+    Write-Host "    Status: NOT DETECTED on port 8010" -ForegroundColor Red
+}
+
+Write-Host ""
+Write-Host "  DATABASE (PostgreSQL)" -ForegroundColor Yellow
+Write-Host "    Container : kidwall_db"
+Write-Host "    Host      : localhost:5432"
+Write-Host "    DB name   : colepago"
+Write-Host "    User      : colepago"
+if ($dbRunning) {
+    Write-Host "    Status    : RUNNING" -ForegroundColor Green
+} else {
+    Write-Host "    Status    : STOPPED" -ForegroundColor Red
+}
+
+Write-Host ""
+Write-Host "  KUBERNETES / NGINX INGRESS" -ForegroundColor Yellow
+Write-Host "    Ingress IP     : $ingressIp"
+Write-Host "    TLS secret     : colepago-web-drsrv-tls  -> colepago-web.drsrv.net.ar"
+Write-Host "    TLS secret     : api-tls-secret           -> api.drsrv.net.ar"
+Write-Host "    Namespace      : default"
+$ingressStatus = kubectl get ingress 2>$null | Select-String -Pattern "ingress"
+if ($ingressStatus) { $ingressStatus | ForEach-Object { Write-Host "    $_" } }
+
+Write-Host ""
+Write-Host "  FLUTTER APKs" -ForegroundColor Yellow
+$kidsApk    = "d:/kidwall/colepago-parents-app/build/app/outputs/flutter-apk/app-kids-release.apk"
+$parentsApk = "d:/kidwall/colepago-parents-app/build/app/outputs/flutter-apk/app-parents-release.apk"
+if (Test-Path $kidsApk) {
+    $sz = [math]::Round((Get-Item $kidsApk).Length / 1MB, 1)
+    Write-Host "    Kids    : $kidsApk  ($sz MB)" -ForegroundColor Green
+} else {
+    Write-Host "    Kids    : NOT FOUND (build failed?)" -ForegroundColor Red
+}
+if (Test-Path $parentsApk) {
+    $sz = [math]::Round((Get-Item $parentsApk).Length / 1MB, 1)
+    Write-Host "    Parents : $parentsApk  ($sz MB)" -ForegroundColor Green
+} else {
+    Write-Host "    Parents : NOT FOUND (build failed?)" -ForegroundColor Red
+}
+
+Write-Host ""
+Write-Host "  DOCKER IMAGES" -ForegroundColor Yellow
+docker images colepago --format "    {{.Repository}}:{{.Tag}}  built {{.CreatedSince}}  ({{.Size}})"
+
+Write-Host ""
+Write-Host "  VOICE / SPEECH SERVICES" -ForegroundColor Yellow
+
+# Whisper server (port 8000)
+$whisperPid = (Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
+$whisperExe  = "D:\tools\whisper.cpp\Release\whisper-server.exe"
+$whisperModel = "D:\tools\whisper.cpp\ggml-small.en.bin"
+Write-Host "    Whisper server  : http://localhost:8000/inference"
+Write-Host "    Start script    : D:\kidwall\start_whisper_server.ps1"
+Write-Host "    Model file      : $whisperModel  (exists: $(Test-Path $whisperModel))"
+Write-Host "    Executable      : $whisperExe  (exists: $(Test-Path $whisperExe))"
+if ($whisperPid) {
+    Write-Host "    Status          : RUNNING (PID $whisperPid)" -ForegroundColor Green
+} else {
+    Write-Host "    Status          : STOPPED  (run .\start_whisper_server.ps1 to start)" -ForegroundColor Red
+}
+
+# Speech listener (speak_to_text.py)
+$listenerProc = Get-Process python -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match "speak_to_text" } |
+    Select-Object -First 1
+Write-Host "    Speech listener : D:\kidwall\speak_to_text.py"
+Write-Host "    Start script    : D:\kidwall\start_listener.bat"
+Write-Host "    Backend (env)   : TRANSCRIBE_BACKEND in .env  (default: local)"
+Write-Host "    Sox audio       : C:\Program Files (x86)\sox-14-4-2\sox.exe  (exists: $(Test-Path 'C:\Program Files (x86)\sox-14-4-2\sox.exe'))"
+if ($listenerProc) {
+    Write-Host "    Status          : RUNNING (PID $($listenerProc.Id))" -ForegroundColor Green
+} else {
+    Write-Host "    Status          : STOPPED  (run .\start_listener.bat to start)" -ForegroundColor Red
+}
+
+Write-Host ""
+Write-Host $sep -ForegroundColor Cyan
+Write-Host ""

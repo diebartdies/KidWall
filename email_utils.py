@@ -1,7 +1,11 @@
 import smtplib
 import os
+from pathlib import Path
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / '.env')
 
 SMTP_HOST = os.getenv('SMTP_HOST', 'mailout.easymail.ca')
 SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))

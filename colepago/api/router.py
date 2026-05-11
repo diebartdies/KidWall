@@ -4,28 +4,38 @@ import secrets
 import string
 import datetime
 
+import bcrypt
 import mercadopago
 import stripe
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
-from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, SecretStr
 from sqlalchemy.orm import Session
 
-from models import Child, Merchant, Parent, ParentProfile, TrustedContact, User, UserType, get_db
+from models import Child, Merchant, Parent, ParentProfile, PaymentProvider, TrustedContact, User, UserType, get_db
 from email_utils import send_temp_password_email, send_alert_email
 from whatsapp_utils import send_whatsapp, make_voice_call
 from geo_utils import is_payment_location_valid, is_rapid_spend, is_off_route
 from models import Transaction, TransactionType, ChildLocationPing, ChildRouteWaypoint
+from services.payment_gateway import (
+    cents_to_pesos,
+    create_merchant_payout_method,
+    prepare_merchant_payout,
+    record_child_purchase,
+    record_parent_deposit,
+)
 
 router = APIRouter()
 
 COIN_CONVERSION_RATE = 1.0
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
 load_dotenv()
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
@@ -56,11 +66,24 @@ class FundWalletRequest(BaseModel):
     stripe_payment_method_id: Optional[str] = None
 
 
+class MerchantPayoutMethodRequest(BaseModel):
+    provider: Literal['mercadopago', 'stripe', 'bank_manual']
+    provider_account_id: Optional[str] = None
+    label: Optional[str] = None
+    metadata_json: Optional[str] = None
+
+
+class MerchantPayoutRequest(BaseModel):
+    payout_method_id: int
+    amount_pesos: float
+
+
 class RegisterRequest(BaseModel):
     name: str
     email: EmailStr
     password: str
     role: Literal['parent', 'merchant']
+    username: Optional[str] = None
 
 
 @router.get('/ping')
@@ -80,21 +103,29 @@ async def api_root():
 
 @router.post('/auth/register')
 def register(data: RegisterRequest, db: Session = Depends(get_db)):
+    username = data.username.strip() if data.username else None
+    if username and db.query(User).filter(User.username == username).first():
+        raise HTTPException(status_code=400, detail='Username already registered')
+
     if data.role == 'parent':
         if db.query(Parent).filter(Parent.email == data.email).first():
             raise HTTPException(status_code=400, detail='Email already registered')
         user = Parent(
             name=data.name,
+            username=username,
             email=data.email,
             password_hash=hash_password(data.password),
+            role=UserType.parent,
         )
     else:
         if db.query(Merchant).filter(Merchant.email == data.email).first():
             raise HTTPException(status_code=400, detail='Email already registered')
         user = Merchant(
             name=data.name,
+            username=username,
             email=data.email,
             password_hash=hash_password(data.password),
+            role=UserType.merchant,
         )
 
     db.add(user)
@@ -111,24 +142,45 @@ def fund_wallet(data: FundWalletRequest, db: Session = Depends(get_db)):
     if data.amount_pesos <= 0:
         raise HTTPException(status_code=400, detail='Amount must be positive')
 
+    provider = PaymentProvider.bank_manual
+    external_id = None
     if data.payment_method == 'mercadopago':
         if mp_client is None:
             raise HTTPException(status_code=500, detail='Mercado Pago not configured')
         if not data.mp_token:
             raise HTTPException(status_code=400, detail='Mercado Pago token required')
+        provider = PaymentProvider.mercadopago
+        external_id = 'mercadopago_pending'
     elif data.payment_method == 'stripe_card':
         if not STRIPE_SECRET_KEY:
             raise HTTPException(status_code=500, detail='Stripe not configured')
         if not data.stripe_payment_method_id:
             raise HTTPException(status_code=400, detail='Stripe PaymentMethod ID required')
+        provider = PaymentProvider.stripe
+        external_id = data.stripe_payment_method_id
     elif data.payment_method == 'bank_transfer' and not data.bank_account:
         raise HTTPException(status_code=400, detail='Bank transfer details required')
 
-    coins = data.amount_pesos * COIN_CONVERSION_RATE
-    parent.balance = (parent.balance or 0) + coins
+    try:
+        payment = record_parent_deposit(
+            db,
+            parent=parent,
+            amount_pesos=data.amount_pesos * COIN_CONVERSION_RATE,
+            provider=provider,
+            external_id=external_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     db.commit()
     db.refresh(parent)
-    return {'msg': 'Wallet funded successfully', 'coins_added': coins, 'new_balance': parent.balance}
+    return {
+        'msg': 'Wallet funded successfully',
+        'external_payment_id': payment.id,
+        'ledger_transaction_id': payment.ledger_transaction_id,
+        'coins_added': cents_to_pesos(payment.amount_cents),
+        'new_balance': parent.balance,
+    }
 
 
 @router.post('/wallet/test-stripe')
@@ -146,13 +198,20 @@ def test_stripe_payment(data: StripeTestRequest, db: Session = Depends(get_db)):
 @router.post('/child/spend')
 def child_spend(data: SpendRequest, db: Session = Depends(get_db)):
     child = db.query(Child).filter(Child.id == data.child_id).first()
-    merchant = db.query(Merchant).filter(Merchant.id == data.merchant_id).first()
+    merchant = (
+        db.query(Merchant)
+        .filter(Merchant.id == data.merchant_id, Merchant.role == UserType.merchant)
+        .first()
+    )
     if not child or not merchant:
         raise HTTPException(status_code=404, detail='Child or merchant not found')
+    parent = child.parent
+    if not parent:
+        raise HTTPException(status_code=404, detail='Parent not found')
     if child.is_blocked:
         raise HTTPException(status_code=403, detail='Account blocked')
-    if child.balance < data.amount:
-        raise HTTPException(status_code=400, detail='Insufficient balance')
+    if data.amount <= 0:
+        raise HTTPException(status_code=400, detail='Amount must be positive')
 
     # ── Geo-fence check ──────────────────────────────────────────────
     # If the child has a school location set, payment must originate
@@ -185,25 +244,148 @@ def child_spend(data: SpendRequest, db: Session = Depends(get_db)):
             detail='Account auto-blocked: too many purchases in a short time. Parent has been alerted.'
         )
 
-    child.balance -= data.amount
-    merchant.balance = (merchant.balance or 0) + data.amount
+    try:
+        ledger_txn = record_child_purchase(
+            db,
+            parent=parent,
+            merchant=merchant,
+            child_id=child.id,
+            amount_pesos=data.amount,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     # Record transaction for future rapid-spend queries
     txn = Transaction(
-        from_id=child.id,
+        from_id=parent.id,
         to_id=merchant.id,
         child_id=child.id,
         amount=data.amount,
         type=TransactionType.spend,
-        description=f'Purchase at merchant {merchant.id}',
+        description=f'Child {child.id} purchase confirmed by merchant {merchant.id}',
     )
     db.add(txn)
     db.commit()
-    return {'msg': 'Payment successful'}
+    db.refresh(parent)
+    db.refresh(merchant)
+    return {
+        'msg': 'Payment successful',
+        'ledger_transaction_id': ledger_txn.id,
+        'parent_balance': parent.balance,
+        'merchant_balance': merchant.balance,
+    }
+
+
+@router.post('/merchant/{merchant_id}/payout-methods')
+def add_merchant_payout_method(
+    merchant_id: int,
+    data: MerchantPayoutMethodRequest,
+    db: Session = Depends(get_db),
+):
+    merchant = db.query(Merchant).filter(Merchant.id == merchant_id, Merchant.role == UserType.merchant).first()
+    if not merchant:
+        raise HTTPException(status_code=404, detail='Merchant not found')
+    try:
+        payout_method = create_merchant_payout_method(
+            db,
+            merchant=merchant,
+            provider=PaymentProvider(data.provider),
+            provider_account_id=data.provider_account_id,
+            label=data.label,
+            metadata_json=data.metadata_json,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    db.refresh(payout_method)
+    return {
+        'msg': 'Payout method saved',
+        'payout_method_id': payout_method.id,
+        'provider': payout_method.provider.value,
+        'status': payout_method.status,
+    }
+
+
+@router.post('/merchant/{merchant_id}/payouts')
+def create_merchant_payout(
+    merchant_id: int,
+    data: MerchantPayoutRequest,
+    db: Session = Depends(get_db),
+):
+    from models import MerchantPayoutMethod
+
+    merchant = db.query(Merchant).filter(Merchant.id == merchant_id, Merchant.role == UserType.merchant).first()
+    if not merchant:
+        raise HTTPException(status_code=404, detail='Merchant not found')
+    payout_method = (
+        db.query(MerchantPayoutMethod)
+        .filter(MerchantPayoutMethod.id == data.payout_method_id, MerchantPayoutMethod.merchant_id == merchant_id)
+        .first()
+    )
+    if not payout_method:
+        raise HTTPException(status_code=404, detail='Payout method not found')
+    try:
+        payout = prepare_merchant_payout(
+            db,
+            merchant=merchant,
+            payout_method=payout_method,
+            amount_pesos=data.amount_pesos,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    db.refresh(merchant)
+    db.refresh(payout)
+    return {
+        'msg': 'Payout prepared',
+        'payout_id': payout.id,
+        'ledger_transaction_id': payout.ledger_transaction_id,
+        'status': payout.status.value,
+        'merchant_balance': merchant.balance,
+    }
+
+
+def _notification_recipients(parent_user, profile):
+    """Return parent and trusted contacts with email addresses, without duplicates."""
+    recipients = []
+    seen = set()
+
+    def add(label: str, email: str | None):
+        if not email:
+            return
+        normalized = email.strip().lower()
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        recipients.append((label, email.strip()))
+
+    if parent_user:
+        add(parent_user.name or 'Parent', getattr(parent_user, 'email', None))
+    if profile:
+        add('Parent', profile.email)
+        for contact in profile.trusted_contacts:
+            label = f"{contact.name} {contact.surname or ''}".strip() or 'Trusted contact'
+            add(label, contact.email)
+
+    return recipients
+
+
+def _email_child_alert(parent_user, profile, child_name: str, message: str, school_name: str = 'ColePago'):
+    for recipient_name, to_email in _notification_recipients(parent_user, profile):
+        try:
+            send_alert_email(
+                to_email=to_email,
+                recipient_name=recipient_name,
+                child_name=child_name,
+                message=message,
+                school_name=school_name,
+            )
+        except Exception:
+            pass
 
 
 def _fire_theft_alert(child, db):
-    """Send WhatsApp + email to parent when rapid-spend triggers an auto-block."""
+    """Send WhatsApp + email alerts when rapid-spend triggers an auto-block."""
     try:
         parent_user = child.parent
         profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_user.id).first()
@@ -218,20 +400,15 @@ def _fire_theft_alert(child, db):
                 send_whatsapp(profile.mobile_phone, profile.country_code or '', msg)
             except Exception:
                 pass
-        if parent_user and parent_user.email:
-            try:
-                send_alert_email(
-                    to_email=parent_user.email,
-                    recipient_name=parent_user.name,
-                    child_name=child.name,
-                    message=(
-                        f"{child.name}'s account was auto-blocked after 3 purchases in under 5 minutes. "
-                        "This may indicate phone theft. Log in to review and unblock."
-                    ),
-                    school_name='ColePago',
-                )
-            except Exception:
-                pass
+        _email_child_alert(
+            parent_user,
+            profile,
+            child.name,
+            (
+                f"{child.name}'s account was auto-blocked after 3 purchases in under 5 minutes. "
+                "This may indicate phone theft. Log in to review and unblock."
+            ),
+        )
     except Exception:
         pass  # alert failure must never prevent the HTTP response
 
@@ -316,7 +493,7 @@ def get_route(child_id: int, db: Session = Depends(get_db)):
 
 
 def _fire_route_alert(child, lat: float, lon: float, db):
-    """Alert the parent when the child strays from their standard route."""
+    """Alert the parent and trusted contacts when the child strays from their standard route."""
     try:
         parent_user = child.parent
         profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_user.id).first()
@@ -331,20 +508,15 @@ def _fire_route_alert(child, lat: float, lon: float, db):
                 send_whatsapp(profile.mobile_phone, profile.country_code or '', msg)
             except Exception:
                 pass
-        if parent_user and parent_user.email:
-            try:
-                send_alert_email(
-                    to_email=parent_user.email,
-                    recipient_name=parent_user.name,
-                    child_name=child.name,
-                    message=(
-                        f"{child.name} appears to be off their normal route. "
-                        f"Last position: {lat:.5f}, {lon:.5f}. Please check on them."
-                    ),
-                    school_name='ColePago',
-                )
-            except Exception:
-                pass
+        _email_child_alert(
+            parent_user,
+            profile,
+            child.name,
+            (
+                f"{child.name} appears to be off their normal route. "
+                f"Last position: {lat:.5f}, {lon:.5f}. Please check on them."
+            ),
+        )
     except Exception:
         pass
 
@@ -374,7 +546,7 @@ def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
         return {'msg': 'If that email is registered you will receive a reset link.'}
 
     temp_pw = _generate_temp_password()
-    user.temp_password_hash = pwd_context.hash(temp_pw)
+    user.temp_password_hash = hash_password(temp_pw)
     user.temp_password_expires = datetime.datetime.utcnow() + datetime.timedelta(hours=2)
     db.commit()
 
@@ -402,13 +574,13 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status_code=400, detail='Temporary password has expired. Please request a new one.')
 
-    if not pwd_context.verify(data.temp_password, user.temp_password_hash):
+    if not verify_password(data.temp_password, user.temp_password_hash):
         raise HTTPException(status_code=400, detail='Invalid temporary password.')
 
     if len(data.new_password) < 8:
         raise HTTPException(status_code=400, detail='New password must be at least 8 characters.')
 
-    user.password_hash = pwd_context.hash(data.new_password)
+    user.password_hash = hash_password(data.new_password)
     user.temp_password_hash = None
     user.temp_password_expires = None
     db.commit()
@@ -420,12 +592,15 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
 class ParentProfileRequest(BaseModel):
     relationship_to_child: Optional[str] = None
     home_address: Optional[str] = None
+    home_floor: Optional[str] = None
+    home_department: Optional[str] = None
     home_postal: Optional[str] = None
     home_phone: Optional[str] = None
     mobile_phone: Optional[str] = None
     country_code: Optional[str] = None
     work_name: Optional[str] = None
     work_address: Optional[str] = None
+    work_postal: Optional[str] = None
     work_phone: Optional[str] = None
     work_shift: Optional[str] = None
     work_hours: Optional[str] = None
@@ -438,16 +613,21 @@ def get_parent_profile(parent_id: int, db: Session = Depends(get_db)):
     profile = db.query(ParentProfile).filter(ParentProfile.user_id == parent_id).first()
     if not profile:
         return {}
+    parent = db.query(User).filter(User.id == parent_id).first()
     return {
         'id': profile.id,
+        'username': parent.username if parent else None,
         'relationship_to_child': profile.relationship_to_child,
         'home_address': profile.home_address,
+        'home_floor': profile.home_floor,
+        'home_department': profile.home_department,
         'home_postal': profile.home_postal,
         'home_phone': profile.home_phone,
         'mobile_phone': profile.mobile_phone,
         'country_code': profile.country_code,
         'work_name': profile.work_name,
         'work_address': profile.work_address,
+        'work_postal': profile.work_postal,
         'work_phone': profile.work_phone,
         'work_shift': profile.work_shift,
         'work_hours': profile.work_hours,

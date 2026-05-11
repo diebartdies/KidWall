@@ -34,11 +34,24 @@ class School(Base):
     __tablename__ = "schools"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    source = Column(String, nullable=True, index=True)
+    source_year = Column(String, nullable=True)
+    external_id = Column(String, nullable=True, index=True)
+    sector = Column(String, nullable=True)  # public/private
+    district_id = Column(String, nullable=True)
+    district_name = Column(String, nullable=True)
     provincia = Column(String, nullable=False)
     ciudad = Column(String, nullable=False)
     comuna = Column(String, nullable=True)
     address = Column(String, nullable=True)
+    postal_code = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    website = Column(String, nullable=True)
+    level = Column(String, nullable=True)
+    low_grade = Column(String, nullable=True)
+    high_grade = Column(String, nullable=True)
+    locale_code = Column(String, nullable=True)
+    county_name = Column(String, nullable=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
 
@@ -50,6 +63,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    username = Column(String, unique=True, index=True, nullable=True)
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     balance = Column(Float, default=0.0)
@@ -108,6 +122,57 @@ class TransactionType(enum.Enum):
     transfer = "transfer"
 
 
+class LedgerOwnerType(enum.Enum):
+    parent = "parent"
+    child = "child"
+    merchant = "merchant"
+    platform = "platform"
+    provider = "provider"
+
+
+class LedgerAccountType(enum.Enum):
+    wallet = "wallet"
+    receivable = "receivable"
+    fee = "fee"
+    clearing = "clearing"
+    payout = "payout"
+
+
+class LedgerTransactionType(enum.Enum):
+    deposit = "deposit"
+    child_purchase = "child_purchase"
+    merchant_payout = "merchant_payout"
+    refund = "refund"
+    adjustment = "adjustment"
+
+
+class LedgerTransactionStatus(enum.Enum):
+    pending = "pending"
+    posted = "posted"
+    failed = "failed"
+    reversed = "reversed"
+
+
+class PaymentProvider(enum.Enum):
+    mercadopago = "mercadopago"
+    stripe = "stripe"
+    bank_manual = "bank_manual"
+
+
+class ExternalPaymentStatus(enum.Enum):
+    pending = "pending"
+    confirmed = "confirmed"
+    failed = "failed"
+    refunded = "refunded"
+
+
+class ExternalPayoutStatus(enum.Enum):
+    pending = "pending"
+    processing = "processing"
+    paid = "paid"
+    failed = "failed"
+
+
 class WalletBucket(Base):
     """
     A named spending envelope for a child.
@@ -148,6 +213,90 @@ class Transaction(Base):
     description = Column(String, nullable=True)
 
 
+class LedgerAccount(Base):
+    __tablename__ = "ledger_accounts"
+    id = Column(Integer, primary_key=True, index=True)
+    owner_type = Column(Enum(LedgerOwnerType), nullable=False)
+    owner_id = Column(Integer, nullable=True)
+    account_type = Column(Enum(LedgerAccountType), nullable=False)
+    currency = Column(String, default="ARS", nullable=False)
+    name = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    entries = relationship("LedgerEntry", back_populates="account")
+
+
+class LedgerTransaction(Base):
+    __tablename__ = "ledger_transactions"
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(Enum(LedgerTransactionType), nullable=False)
+    status = Column(Enum(LedgerTransactionStatus), default=LedgerTransactionStatus.posted, nullable=False)
+    external_reference = Column(String, nullable=True, index=True)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    entries = relationship("LedgerEntry", back_populates="transaction", cascade="all, delete-orphan")
+
+
+class LedgerEntry(Base):
+    __tablename__ = "ledger_entries"
+    id = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(Integer, ForeignKey("ledger_transactions.id"), nullable=False)
+    account_id = Column(Integer, ForeignKey("ledger_accounts.id"), nullable=False)
+    amount_cents = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    transaction = relationship("LedgerTransaction", back_populates="entries")
+    account = relationship("LedgerAccount", back_populates="entries")
+
+
+class MerchantPayoutMethod(Base):
+    __tablename__ = "merchant_payout_methods"
+    id = Column(Integer, primary_key=True, index=True)
+    merchant_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    provider = Column(Enum(PaymentProvider), nullable=False)
+    provider_account_id = Column(String, nullable=True)
+    label = Column(String, nullable=True)
+    status = Column(String, default="pending", nullable=False)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    merchant = relationship("User")
+
+
+class ExternalPayment(Base):
+    __tablename__ = "external_payments"
+    id = Column(Integer, primary_key=True, index=True)
+    parent_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    provider = Column(Enum(PaymentProvider), nullable=False)
+    external_id = Column(String, nullable=True, index=True)
+    amount_cents = Column(Integer, nullable=False)
+    currency = Column(String, default="ARS", nullable=False)
+    status = Column(Enum(ExternalPaymentStatus), default=ExternalPaymentStatus.pending, nullable=False)
+    ledger_transaction_id = Column(Integer, ForeignKey("ledger_transactions.id"), nullable=True)
+    raw_response_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    confirmed_at = Column(DateTime, nullable=True)
+    parent = relationship("User", foreign_keys=[parent_id])
+    ledger_transaction = relationship("LedgerTransaction")
+
+
+class ExternalPayout(Base):
+    __tablename__ = "external_payouts"
+    id = Column(Integer, primary_key=True, index=True)
+    merchant_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    payout_method_id = Column(Integer, ForeignKey("merchant_payout_methods.id"), nullable=True)
+    provider = Column(Enum(PaymentProvider), nullable=False)
+    external_id = Column(String, nullable=True, index=True)
+    amount_cents = Column(Integer, nullable=False)
+    currency = Column(String, default="ARS", nullable=False)
+    status = Column(Enum(ExternalPayoutStatus), default=ExternalPayoutStatus.pending, nullable=False)
+    ledger_transaction_id = Column(Integer, ForeignKey("ledger_transactions.id"), nullable=True)
+    raw_response_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    paid_at = Column(DateTime, nullable=True)
+    merchant = relationship("User", foreign_keys=[merchant_id])
+    payout_method = relationship("MerchantPayoutMethod")
+    ledger_transaction = relationship("LedgerTransaction")
+
+
 # --- ParentProfile and TrustedContact models ---
 
 class ParentProfile(Base):
@@ -156,12 +305,15 @@ class ParentProfile(Base):
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
     relationship_to_child = Column(String, nullable=True)  # father, mother, uncle, aunt, other
     home_address = Column(String, nullable=True)
+    home_floor = Column(String, nullable=True)
+    home_department = Column(String, nullable=True)
     home_postal = Column(String, nullable=True)
     home_phone = Column(String, nullable=True)
     mobile_phone = Column(String, nullable=True)
     country_code = Column(String, nullable=True)
     work_name = Column(String, nullable=True)
     work_address = Column(String, nullable=True)
+    work_postal = Column(String, nullable=True)
     work_phone = Column(String, nullable=True)
     work_shift = Column(String, nullable=True)   # morning, afternoon, night, rotating
     work_hours = Column(String, nullable=True)   # e.g. "08:00-16:00"
