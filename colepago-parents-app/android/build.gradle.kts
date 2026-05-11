@@ -1,13 +1,3 @@
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.21")
-    }
-}
-
 subprojects {
     tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
         // Some Flutter plugin Android modules still compile with source/target 8.

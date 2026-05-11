@@ -13,14 +13,30 @@ if (Test-Path ".env") {
     Write-Warning ".env not found - skipping backup."
 }
 
-# 1. Upgrade Flutter if needed and build/recompile APKs
-Write-Host "Checking for new Flutter version..."
-flutter upgrade
-
-Write-Host "Building APKs..."
-Set-Location -Path "d:/kidwall/colepago-parents-app"
-./build_both_apks.ps1
-Set-Location -Path "d:/kidwall"
+# 1. Verify Flutter/Android toolchain and build/recompile APKs.
+# Do not run `flutter upgrade` here: deployment must be reproducible, and an
+# automatic SDK upgrade can break Android plugin/Gradle compatibility.
+$apkBuildSucceeded = $false
+Write-Host "Checking Flutter version..."
+flutter --version
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Flutter is not available or failed to report its version - skipping APK build and continuing."
+} else {
+    Write-Host "Building APKs with pinned project Android toolchain..."
+    Set-Location -Path "d:/kidwall/colepago-parents-app"
+    try {
+        & ".\build_both_apks.ps1"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "APK build failed - continuing with non-APK deployment steps."
+        } else {
+            $apkBuildSucceeded = $true
+        }
+    } catch {
+        Write-Warning "APK build failed - continuing with non-APK deployment steps. $($_.Exception.Message)"
+    } finally {
+        Set-Location -Path "d:/kidwall"
+    }
+}
 
 # 2. Sync all code to GitHub (force push all branches)
 git add .
@@ -114,7 +130,11 @@ if (Test-Path $dyndnsScript) {
     }
 }
 
-Write-Host "All steps completed."
+if ($apkBuildSucceeded) {
+    Write-Host "All steps completed."
+} else {
+    Write-Warning "Deployment completed, but APK build failed or was interrupted. APK-related actions remain pending."
+}
 
 # ============================================================
 # DEPLOYMENT SUMMARY

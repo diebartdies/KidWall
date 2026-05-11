@@ -369,6 +369,75 @@ School import notes:
 
 ## 2026-05-09
 
+### Deployment File Note
+
+- Confirmed on 2026-05-11 that `D:\kidwall\.github\workflows\deploy_all.yml` does not exist anymore.
+- Do not reference that GitHub Actions workflow as an active deployment path.
+- Current deployment/start files observed at the project root include:
+  - `deploy_all.ps1`
+  - `colepago-backend-deployment.yaml`
+  - `colepago-backend-ingress.yaml`
+  - `deploy_wallet_stack.sh`
+  - `start-all.ps1`
+  - `start-quick.ps1`
+  - `restart-all.bat`
+  - `stop-all.bat`
+- Pending:
+  - Decide whether deployment should be managed by local PowerShell scripts, Kubernetes manifests, or a recreated GitHub Actions workflow.
+
+### APK Build/Deploy Consistency Check
+
+- Reviewed `deploy_all.ps1` and `colepago-parents-app/build_both_apks.ps1` for APK build compatibility.
+- Found issue:
+  - `deploy_all.ps1` ran `flutter upgrade` immediately before building APKs.
+  - This is unsafe for reproducible deployment because Flutter/Gradle/Android plugin upgrades can break the APK build without warning.
+- Changed `deploy_all.ps1`:
+  - Replaced `flutter upgrade` with `flutter --version`.
+  - Deployment now verifies Flutter is available but does not upgrade it automatically.
+  - Deployment aborts if `build_both_apks.ps1` returns a non-zero exit code.
+- Found issue:
+  - `build_both_apks.ps1` reported APK success when old APK files already existed, even if the new build failed.
+- Changed `build_both_apks.ps1`:
+  - Added strict error behavior.
+  - Removes stale expected APK outputs before each flavor build.
+  - Checks `$LASTEXITCODE` after each `flutter build apk`.
+  - Throws on build failure or missing expected output.
+  - Builds both flavors with explicit `--release`.
+- Validation:
+  - PowerShell syntax parse passed for `deploy_all.ps1`.
+  - PowerShell syntax parse passed for `build_both_apks.ps1`.
+- Important:
+  - No new APK build was started during this check because the user was already running a build.
+
+### Gradle APK Build Crash Diagnosis
+
+- User ran `deploy_all.ps1` and the APK build failed during `assembleKidsRelease`.
+- Crash log inspected:
+  - `colepago-parents-app/android/hs_err_pid18344.log`
+- Root cause from JVM crash log:
+  - Java native memory allocation failed.
+  - Gradle daemon disappeared because the JVM crashed.
+  - The JVM was launched with `-Xmx5G`.
+  - Gradle had many worker/build operation threads active.
+- Changed Android Gradle stability settings in:
+  - `colepago-parents-app/android/gradle.properties`
+- New settings:
+  - reduced heap from `-Xmx5G` to `-Xmx3G`
+  - reduced thread stack with `-Xss512k`
+  - reduced metaspace/code cache
+  - disabled Gradle daemon
+  - disabled parallel build
+  - disabled configure-on-demand
+  - limited workers with `org.gradle.workers.max=2`
+  - disabled R8 full mode with `android.enableR8.fullMode=false`
+- Changed APK build helper:
+  - `build_both_apks.ps1` now stops existing Gradle daemons before starting APK builds.
+- Validation:
+  - `deploy_all.ps1` syntax OK.
+  - `build_both_apks.ps1` syntax OK.
+- Important:
+  - The failed output still showed `Checking for new Flutter version...`, which means it was run from the older script version or before the latest patch. The current `deploy_all.ps1` says `Checking Flutter version...` and does not run `flutter upgrade`.
+
 ### Dependency Setup
 
 - Installed missing Python dependencies from `colepago/requirements.txt` into the existing virtual environment.
