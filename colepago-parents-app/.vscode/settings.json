@@ -3,6 +3,9 @@
   "dart.analysisExcludedFolders": [
     "D:/kidwall/colepago-parents-app/flutter"
   ],
+  "terminal.integrated.env.windows": {
+    "PATH": "${workspaceFolder}\\tools;${env:PATH}"
+  },
   "files.exclude": {
     "flutter/": true
   }

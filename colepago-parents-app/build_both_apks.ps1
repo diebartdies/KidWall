@@ -3,6 +3,7 @@ $ErrorActionPreference = "Stop"
 
 $projectPath = "d:/kidwall/colepago-parents-app"
 Set-Location $projectPath
+$env:PATH = "$projectPath/tools;$env:PATH"
 
 $outputDir = "$projectPath/build/app/outputs/flutter-apk"
 $kidsApk = "$outputDir/app-kids-release.apk"
