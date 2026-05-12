@@ -16,9 +16,11 @@ config = context.config
 fileConfig(config.config_file_name)
 
 # Build URL from env vars (overrides alembic.ini sqlalchemy.url)
-_db_user = os.getenv('POSTGRES_USER', 'colepago')
-_db_pass = os.getenv('POSTGRES_PASSWORD', 'Palo1010')
+_db_user = os.getenv('POSTGRES_USER')
+_db_pass = os.getenv('POSTGRES_PASSWORD')
 _db_host = os.getenv('POSTGRES_HOST', 'localhost')
+if not _db_user or not _db_pass:
+    raise RuntimeError('POSTGRES_USER and POSTGRES_PASSWORD must be set in the environment')
 if _db_host == 'db':   # Docker service name → use host-mapped address
     _db_host = 'localhost'
 _db_port = os.getenv('POSTGRES_PORT', '5432')
