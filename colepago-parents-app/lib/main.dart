@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/kid_home_screen.dart';
-import 'screens/login_screen.dart';
+import 'screens/kid_login_screen.dart';
 
 void main() {
   runApp(const ColePagoKidsApp());
@@ -33,7 +33,7 @@ class _KidsAuthFlowState extends State<KidsAuthFlow> {
   String? _token;
   int? _kidId;
 
-  void _onLoginSuccess(String token, int kidId) {
+  void _onLoginSuccess(String token, int kidId, String role) {
     setState(() {
       _token = token;
       _kidId = kidId;
@@ -43,9 +43,11 @@ class _KidsAuthFlowState extends State<KidsAuthFlow> {
   @override
   Widget build(BuildContext context) {
     if (_token == null || _kidId == null) {
-      return LoginScreen(onLoginSuccess: _onLoginSuccess);
+      return KidLoginScreen(
+        onLoginSuccess: (token, kidId) => _onLoginSuccess(token, kidId, 'kid'),
+      );
     } else {
-      return KidHomeScreen(); // Pass token/kidId if needed
+      return KidHomeScreen(token: _token!, kidId: _kidId!);
     }
   }
 }

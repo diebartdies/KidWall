@@ -24,6 +24,10 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>ColePago uses the camera to scan merchant payment QR codes.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>ColePago uses Face ID to protect kid wallet access.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

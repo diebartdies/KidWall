@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, Text
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, Text, Boolean
 from sqlalchemy.orm import relationship, declarative_base, Session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -83,6 +83,16 @@ class Child(Base):
     balance = Column(Float, default=0.0)
     school_lat = Column(Float, nullable=True)
     school_lon = Column(Float, nullable=True)
+    mobile_phone = Column(String, unique=True, index=True, nullable=True)
+    school_id = Column(String, nullable=True)
+    school_name = Column(String, nullable=True)
+    shift = Column(String, nullable=True)
+    shift_start = Column(String, nullable=True)
+    shift_end = Column(String, nullable=True)
+    activities_json = Column(Text, nullable=True)
+    lives_with_parent = Column(Boolean, default=True, nullable=False)
+    home_address = Column(String, nullable=True)
+    home_phone = Column(String, nullable=True)
     parent = relationship("User", back_populates="children")
     is_blocked = Column(Integer, default=0)  # 0 = active, 1 = blocked
     suspicious_reason = Column(String, nullable=True)
@@ -100,6 +110,9 @@ class ChildLocationPing(Base):
     child_id = Column(Integer, ForeignKey("children.id"), nullable=False)
     lat = Column(Float, nullable=False)
     lon = Column(Float, nullable=False)
+    accel_x = Column(Float, nullable=True)
+    accel_y = Column(Float, nullable=True)
+    accel_z = Column(Float, nullable=True)
     recorded_at = Column(DateTime, default=datetime.datetime.utcnow)
     child = relationship("Child", back_populates="location_pings")
 
@@ -261,6 +274,24 @@ class MerchantPayoutMethod(Base):
     merchant = relationship("User")
 
 
+class MerchantProfile(Base):
+    __tablename__ = "merchant_profiles"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    place_scope = Column(String, nullable=True)  # inside_school / outside_school
+    business_name = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    personal_name = Column(String, nullable=True)
+    mobile_phone = Column(String, nullable=True)
+    country_code = Column(String, nullable=True)
+    transfer_account_type = Column(String, nullable=True)  # CVU / CBU
+    transfer_account = Column(String, nullable=True)
+    transfer_account_alias = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    user = relationship("User", backref="merchant_profile", uselist=False)
+
+
 class ExternalPayment(Base):
     __tablename__ = "external_payments"
     id = Column(Integer, primary_key=True, index=True)
@@ -304,12 +335,14 @@ class ParentProfile(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
     relationship_to_child = Column(String, nullable=True)  # father, mother, uncle, aunt, other
+    children_using_colepago = Column(Integer, nullable=True)
     home_address = Column(String, nullable=True)
     home_floor = Column(String, nullable=True)
     home_department = Column(String, nullable=True)
     home_postal = Column(String, nullable=True)
     home_phone = Column(String, nullable=True)
     mobile_phone = Column(String, nullable=True)
+    country = Column(String, nullable=True)
     country_code = Column(String, nullable=True)
     work_name = Column(String, nullable=True)
     work_address = Column(String, nullable=True)

@@ -64,6 +64,19 @@ def root():
     }
 
 
+@app.get("/app")
+@app.get("/app/")
+def app_portal():
+    app_file = static_dir / "portal.html"
+    if app_file.exists():
+        return FileResponse(app_file)
+    return {
+        "service": "ColePago App",
+        "status": "missing static/portal.html",
+        "api_base": "/api",
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}

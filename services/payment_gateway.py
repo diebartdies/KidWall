@@ -21,6 +21,7 @@ from models import (
     User,
     UserType,
 )
+from services.admin_config import commission_percent
 
 
 DEFAULT_CURRENCY = "ARS"
@@ -36,7 +37,7 @@ def cents_to_pesos(amount_cents: int) -> float:
 
 
 def _commission_cents(amount_cents: int) -> int:
-    percent = Decimal(os.getenv("COMMISSION_PERCENT", "2"))
+    percent = Decimal(str(commission_percent()))
     return int((Decimal(amount_cents) * percent / Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
@@ -151,6 +152,77 @@ def record_parent_deposit(
         confirmed_at=datetime.datetime.utcnow(),
     )
     db.add(payment)
+    db.flush()
+    return payment
+
+
+def create_pending_parent_deposit(
+    db: Session,
+    parent: User,
+    amount_pesos: float,
+    provider: PaymentProvider,
+    external_id: str | None = None,
+    raw_response_json: str | None = None,
+) -> ExternalPayment:
+    amount_cents = pesos_to_cents(amount_pesos)
+    if amount_cents <= 0:
+        raise ValueError("Deposit amount must be positive")
+
+    payment = ExternalPayment(
+        parent_id=parent.id,
+        provider=provider,
+        external_id=external_id,
+        amount_cents=amount_cents,
+        status=ExternalPaymentStatus.pending,
+        raw_response_json=raw_response_json,
+    )
+    db.add(payment)
+    db.flush()
+    return payment
+
+
+def confirm_parent_deposit(
+    db: Session,
+    payment: ExternalPayment,
+    raw_response_json: str | None = None,
+) -> ExternalPayment:
+    if payment.status == ExternalPaymentStatus.confirmed:
+        return payment
+    if payment.status != ExternalPaymentStatus.pending:
+        raise ValueError(f"Cannot confirm payment with status {payment.status.value}")
+
+    parent = db.query(User).filter(User.id == payment.parent_id).first()
+    if not parent:
+        raise ValueError("Parent not found for external payment")
+
+    parent_wallet = get_or_create_ledger_account(
+        db,
+        LedgerOwnerType.parent,
+        parent.id,
+        LedgerAccountType.wallet,
+        name=f"Parent wallet {parent.id}",
+    )
+    provider_clearing = get_or_create_ledger_account(
+        db,
+        LedgerOwnerType.provider,
+        None,
+        LedgerAccountType.clearing,
+        name=f"{payment.provider.value} clearing",
+    )
+    transaction = _post_transaction(
+        db,
+        LedgerTransactionType.deposit,
+        [(parent_wallet, payment.amount_cents), (provider_clearing, -payment.amount_cents)],
+        external_reference=payment.external_id,
+        description=f"Parent {parent.id} wallet deposit via {payment.provider.value}",
+    )
+
+    parent.balance = (parent.balance or 0) + cents_to_pesos(payment.amount_cents)
+    payment.status = ExternalPaymentStatus.confirmed
+    payment.ledger_transaction_id = transaction.id
+    payment.confirmed_at = datetime.datetime.utcnow()
+    if raw_response_json:
+        payment.raw_response_json = raw_response_json
     db.flush()
     return payment
 

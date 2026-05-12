@@ -113,7 +113,6 @@ window.addEventListener('DOMContentLoaded', () => {
       options: { responsive: true, maintainAspectRatio: false }
     });
 
-    // Respect previously selected language after chart instantiation
     updateChartLanguage(saved);
   }
 });

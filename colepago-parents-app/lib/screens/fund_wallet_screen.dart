@@ -1,347 +1,454 @@
-import 'package:flutter/material.dart' as material;
-import 'package:flutter/material.dart' show State, StatefulWidget;
+import 'package:flutter/material.dart';
 
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:mercado_pago_ducos/mercado_pago_ducos.dart';
-import 'package:dio/dio.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../api_service.dart';
+
+enum FundWalletMode { general, child }
 
 class FundWalletScreen extends StatefulWidget {
+  final String token;
   final int parentId;
-  const FundWalletScreen({super.key, required this.parentId});
+  final FundWalletMode initialMode;
+  final int? initialChildId;
+
+  const FundWalletScreen({
+    super.key,
+    required this.token,
+    required this.parentId,
+    this.initialMode = FundWalletMode.general,
+    this.initialChildId,
+  });
 
   @override
   State<FundWalletScreen> createState() => _FundWalletScreenState();
 }
 
 class _FundWalletScreenState extends State<FundWalletScreen> {
-  void _openPaymentLink() async {
-    if (_mpToken != null && _mpToken!.isNotEmpty) {
-      // ignore: use_build_context_synchronously
-      await material.showDialog(
-        context: context,
-        builder: (ctx) => material.AlertDialog(
-          title: const material.Text('Mercado Pago Payment Link'),
-          content: material.SelectableText(_mpToken!),
-          actions: [
-            material.TextButton(
-              onPressed: () => material.Navigator.of(ctx).pop(),
-              child: const material.Text('Close'),
-            ),
-            material.TextButton(
-              onPressed: () async {
-                material.Navigator.of(ctx).pop();
-                await launchUrl(Uri.parse(_mpToken!));
-              },
-              child: const material.Text('Open Link'),
-            ),
-          ],
-        ),
-      );
-    }
-  }
+  static const _bucketNames = [
+    'Lunch / Snacks',
+    'Books',
+    'Fotocopies',
+    'Transport',
+    'General',
+  ];
 
-  final _formKey = material.GlobalKey<material.FormState>();
-  final material.TextEditingController _amountController =
-      material.TextEditingController();
-  String _paymentMethod = 'mercadopago';
-  bool _loading = false;
+  final _formKey = GlobalKey<FormState>();
+  final _amountCtrl = TextEditingController();
+  final _generalThresholdCtrl = TextEditingController(text: '80');
+  final Map<String, TextEditingController> _bucketCtrls = {
+    for (final name in _bucketNames) name: TextEditingController(),
+  };
+  final Map<String, TextEditingController> _thresholdCtrls = {
+    for (final name in _bucketNames) name: TextEditingController(),
+  };
+
+  late final ApiService _api;
+  late FundWalletMode _mode;
+  String _fundingSource = 'new_money';
+  String _paymentMethod = 'bank_transfer';
+  int? _selectedChildId;
+  bool _loading = true;
+  bool _saving = false;
+  bool _savingThresholds = false;
+  String? _message;
   String? _error;
-  String? _success;
+  List<Map<String, dynamic>> _children = [];
 
-  // Placeholder for payment token/ID
-  String? _mpToken;
-  String? _stripePaymentMethodId;
-
-  // Mercado Pago Ducos integration example (create preference and get init_point)
-  Future<void> _getMercadoPagoToken() async {
-    // Replace with your Mercado Pago access token
-    const accessToken =
-        'APP_USR-2764616976633952-041807-5ac6cce84579811f596731a38fa52369-3315715941';
-    final dio = Dio();
-    dio.options.headers['Authorization'] = 'Bearer $accessToken';
-    final client = HttpClient(provider: DioHttpProvider(dio: dio));
-    final mp = MercadoPago(client: client);
-    try {
-      final preference = await mp.createPreference(
-        body: CreatePreferenceRequestBody(
-          items: [
-            Item(
-              id: 'wallet_fund',
-              title: 'Wallet Fund',
-              quantity: 1,
-              unitPrice: double.tryParse(_amountController.text) ?? 0,
-            ),
-          ],
-        ),
-      );
-      setState(() {
-        // The initPoint is the URL to redirect the user to complete the payment
-        _mpToken = preference.initPoint;
-        _error = null;
-      });
-    } catch (e) {
-      setState(() {
-        _error = 'Mercado Pago error: $e';
-      });
-    }
-  }
-
-  Future<void> _fundWallet() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-      _success = null;
-    });
-    try {
-      final double amount = double.parse(_amountController.text);
-      final body = {
-        "parent_id": widget.parentId,
-        "amount_pesos": amount,
-        "payment_method": _paymentMethod,
-        if (_paymentMethod == 'mercadopago') "mp_token": _mpToken,
-        if (_paymentMethod == 'stripe_card')
-          "stripe_payment_method_id": _stripePaymentMethodId,
-      };
-      final response = await http.post(
-        Uri.parse('https://your-backend.com/wallet/fund'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() {
-          _success = data['msg'] ?? 'Wallet funded!';
-        });
-      } else {
-        setState(() {
-          _error = jsonDecode(response.body)['detail'] ?? 'Payment failed';
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _error = 'Error: $e';
-      });
-    }
-    setState(() {
-      _loading = false;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _api = ApiService()..setToken(widget.token);
+    _mode = widget.initialMode;
+    _selectedChildId = widget.initialChildId;
+    _load();
   }
 
   @override
-  material.Widget build(material.BuildContext context) {
-    // Responsive layout: center content and constrain max width for tablet/desktop
-    final double maxFormWidth = 400;
-    return material.Scaffold(
-      appBar: material.AppBar(title: const material.Text('Fund Wallet')),
-      body: material.Center(
-        child: material.SingleChildScrollView(
-          child: material.ConstrainedBox(
-            constraints: material.BoxConstraints(maxWidth: maxFormWidth),
-            child: material.Card(
-              elevation: 4,
-              shape: material.RoundedRectangleBorder(
-                borderRadius: material.BorderRadius.circular(16),
+  void dispose() {
+    _amountCtrl.dispose();
+    _generalThresholdCtrl.dispose();
+    for (final ctrl in _bucketCtrls.values) {
+      ctrl.dispose();
+    }
+    for (final ctrl in _thresholdCtrls.values) {
+      ctrl.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final children = await _api.getChildren(widget.parentId);
+      setState(() {
+        _children = children;
+        _selectedChildId ??= children.isNotEmpty
+            ? children.first['id'] as int
+            : null;
+        _loading = false;
+      });
+      if (_selectedChildId != null) {
+        await _loadThresholds(_selectedChildId!);
+      }
+    } catch (_) {
+      setState(() {
+        _children = [];
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadThresholds(int childId) async {
+    try {
+      final buckets = await _api.getChildWalletBuckets(childId);
+      final thresholds = <int>[];
+      for (final bucket in buckets) {
+        final name = bucket['name']?.toString();
+        final value = int.tryParse(
+          bucket['alert_threshold_pct']?.toString() ?? '',
+        );
+        if (name != null &&
+            value != null &&
+            _thresholdCtrls.containsKey(name)) {
+          _thresholdCtrls[name]!.text = value.toString();
+          thresholds.add(value);
+        }
+      }
+      if (thresholds.isNotEmpty && thresholds.toSet().length == 1) {
+        _generalThresholdCtrl.text = thresholds.first.toString();
+      }
+      if (mounted) setState(() {});
+    } catch (_) {
+      // New buckets can still receive thresholds during allocation.
+    }
+  }
+
+  int _thresholdValue(TextEditingController ctrl, int fallback) {
+    final value = int.tryParse(ctrl.text.trim());
+    if (value == null) return fallback;
+    return value.clamp(1, 100).toInt();
+  }
+
+  List<Map<String, dynamic>> _thresholdPayload() {
+    final fallback = _thresholdValue(_generalThresholdCtrl, 80);
+    return _thresholdCtrls.entries
+        .map(
+          (entry) => {
+            'name': entry.key,
+            'alert_threshold_pct': _thresholdValue(entry.value, fallback),
+          },
+        )
+        .toList();
+  }
+
+  Future<void> _saveThresholds() async {
+    final childId = _selectedChildId;
+    if (childId == null) {
+      setState(() => _error = 'Select a child');
+      return;
+    }
+    setState(() {
+      _savingThresholds = true;
+      _message = null;
+      _error = null;
+    });
+    try {
+      await _api.updateChildBucketThresholds(
+        parentId: widget.parentId,
+        childId: childId,
+        defaultThresholdPct: _thresholdValue(_generalThresholdCtrl, 80),
+        buckets: _thresholdPayload(),
+      );
+      setState(() => _message = 'Bucket warning thresholds saved.');
+    } catch (e) {
+      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _savingThresholds = false);
+    }
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _saving = true;
+      _message = null;
+      _error = null;
+    });
+
+    final amount = double.parse(_amountCtrl.text.trim());
+    try {
+      if (_mode == FundWalletMode.general) {
+        await _api.fundWallet(
+          parentId: widget.parentId,
+          amount: amount,
+          paymentMethod: _paymentMethod,
+        );
+        setState(() => _message = 'Money loaded to the parent wallet.');
+        return;
+      }
+
+      final childId = _selectedChildId;
+      if (childId == null) {
+        throw Exception('Select a child');
+      }
+
+      final buckets = _bucketCtrls.entries
+          .map(
+            (entry) => {
+              'name': entry.key,
+              'amount': double.tryParse(entry.value.text.trim()) ?? 0.0,
+              'alert_threshold_pct': _thresholdValue(
+                _thresholdCtrls[entry.key]!,
+                _thresholdValue(_generalThresholdCtrl, 80),
               ),
-              child: material.Padding(
-                padding: const material.EdgeInsets.all(24.0),
-                child: material.Form(
-                  key: _formKey,
-                  child: material.Column(
-                    mainAxisSize: material.MainAxisSize.min,
-                    crossAxisAlignment: material.CrossAxisAlignment.stretch,
-                    children: [
-                      material.Text(
-                        'Fund Your Wallet',
-                        style: material.Theme.of(context)
-                            .textTheme
-                            .headlineSmall
-                            ?.copyWith(fontWeight: material.FontWeight.bold),
-                        textAlign: material.TextAlign.center,
+            },
+          )
+          .where((entry) => (entry['amount'] as double) > 0)
+          .toList();
+
+      final bucketTotal = buckets.fold<double>(
+        0,
+        (sum, entry) => sum + (entry['amount'] as double),
+      );
+      if ((bucketTotal - amount).abs() > 0.01) {
+        throw Exception('Bucket amounts must equal the amount to apply.');
+      }
+
+      if (_fundingSource == 'new_money') {
+        await _api.fundWallet(
+          parentId: widget.parentId,
+          amount: amount,
+          paymentMethod: _paymentMethod,
+        );
+      }
+      await _api.allocateWalletToChild(
+        parentId: widget.parentId,
+        childId: childId,
+        amount: amount,
+        buckets: buckets,
+      );
+      setState(() => _message = 'Money applied to child buckets.');
+    } catch (e) {
+      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Load Money')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  SegmentedButton<FundWalletMode>(
+                    segments: const [
+                      ButtonSegment(
+                        value: FundWalletMode.general,
+                        label: Text('General'),
+                        icon: Icon(Icons.account_balance_wallet),
                       ),
-                      const material.SizedBox(height: 24),
-                      material.TextFormField(
-                        controller: _amountController,
-                        decoration: const material.InputDecoration(
-                          labelText: 'Amount (MXN)',
-                          prefixIcon: material.Icon(
-                            material.Icons.attach_money,
-                          ),
-                          border: material.OutlineInputBorder(),
-                        ),
-                        keyboardType: material.TextInputType.number,
-                        validator: (v) =>
-                            v == null || v.isEmpty ? 'Enter amount' : null,
-                      ),
-                      const material.SizedBox(height: 16),
-                      material.DropdownButtonFormField<String>(
-                        initialValue: _paymentMethod,
-                        items: [
-                          material.DropdownMenuItem(
-                            value: 'mercadopago',
-                            child: material.Row(
-                              children: [
-                                material.Image.network(
-                                  'https://seeklogo.com/images/M/mercado-pago-logo-7B1C0B7B0B-seeklogo.com.png',
-                                  width: 24,
-                                  height: 24,
-                                  errorBuilder: (c, e, s) =>
-                                      const material.Icon(
-                                        material.Icons.account_balance_wallet,
-                                      ),
-                                ),
-                                const material.SizedBox(width: 8),
-                                const material.Text('Mercado Pago'),
-                              ],
-                            ),
-                          ),
-                          material.DropdownMenuItem(
-                            value: 'stripe_card',
-                            child: material.Row(
-                              children: [
-                                material.Image.network(
-                                  'https://seeklogo.com/images/S/stripe-logo-660F8FEC34-seeklogo.com.png',
-                                  width: 24,
-                                  height: 24,
-                                  errorBuilder: (c, e, s) =>
-                                      const material.Icon(
-                                        material.Icons.credit_card,
-                                      ),
-                                ),
-                                const material.SizedBox(width: 8),
-                                const material.Text('Stripe Card'),
-                              ],
-                            ),
-                          ),
-                        ],
-                        onChanged: (v) => setState(() => _paymentMethod = v!),
-                        decoration: const material.InputDecoration(
-                          labelText: 'Payment Method',
-                          border: material.OutlineInputBorder(),
-                        ),
-                      ),
-                      const material.SizedBox(height: 16),
-                      if (_paymentMethod == 'mercadopago')
-                        material.Row(
-                          children: [
-                            material.Expanded(
-                              child: material.TextFormField(
-                                decoration: const material.InputDecoration(
-                                  labelText: 'Mercado Pago Payment Link',
-                                  prefixIcon: material.Icon(
-                                    material.Icons.vpn_key,
-                                  ),
-                                  border: material.OutlineInputBorder(),
-                                ),
-                                controller: material.TextEditingController(
-                                  text: _mpToken,
-                                ),
-                                onChanged: (v) => _mpToken = v,
-                                validator: (v) =>
-                                    _paymentMethod == 'mercadopago' &&
-                                        (v == null || v.isEmpty)
-                                    ? 'Get the Mercado Pago payment link'
-                                    : null,
-                              ),
-                            ),
-                            material.SizedBox(width: 8),
-                            material.ElevatedButton(
-                              onPressed: _loading ? null : _getMercadoPagoToken,
-                              child: const material.Text('Get Link'),
-                            ),
-                            if (_mpToken != null && _mpToken!.isNotEmpty)
-                              material.SizedBox(width: 8),
-                            if (_mpToken != null && _mpToken!.isNotEmpty)
-                              material.ElevatedButton(
-                                onPressed: _openPaymentLink,
-                                child: const material.Text('Open'),
-                              ),
-                          ],
-                        ),
-                      if (_paymentMethod == 'stripe_card')
-                        material.TextFormField(
-                          decoration: const material.InputDecoration(
-                            labelText: 'Stripe Payment Method ID',
-                            prefixIcon: material.Icon(
-                              material.Icons.credit_card,
-                            ),
-                            border: material.OutlineInputBorder(),
-                          ),
-                          onChanged: (v) => _stripePaymentMethodId = v,
-                          validator: (v) =>
-                              _paymentMethod == 'stripe_card' &&
-                                  (v == null || v.isEmpty)
-                              ? 'Enter Stripe Payment Method ID'
-                              : null,
-                        ),
-                      const material.SizedBox(height: 24),
-                      if (_loading) ...[
-                        const material.Center(
-                          child: material.CircularProgressIndicator(),
-                        ),
-                        const material.SizedBox(height: 16),
-                      ],
-                      if (_error != null)
-                        material.Text(
-                          _error!,
-                          style: const material.TextStyle(
-                            color: material.Colors.red,
-                          ),
-                          textAlign: material.TextAlign.center,
-                        ),
-                      if (_success != null)
-                        material.Text(
-                          _success!,
-                          style: const material.TextStyle(
-                            color: material.Colors.green,
-                          ),
-                          textAlign: material.TextAlign.center,
-                        ),
-                      const material.SizedBox(height: 16),
-                      material.SizedBox(
-                        width: double.infinity,
-                        child: material.ElevatedButton.icon(
-                          icon: const material.Icon(
-                            material.Icons.account_balance_wallet,
-                          ),
-                          label: const material.Text('Fund Wallet'),
-                          style: material.ElevatedButton.styleFrom(
-                            padding: const material.EdgeInsets.symmetric(
-                              vertical: 16,
-                            ),
-                            textStyle: const material.TextStyle(fontSize: 18),
-                          ),
-                          onPressed: _loading
-                              ? null
-                              : () {
-                                  if (_formKey.currentState!.validate()) {
-                                    if ((_paymentMethod == 'mercadopago' &&
-                                            (_mpToken == null ||
-                                                _mpToken!.isEmpty)) ||
-                                        (_paymentMethod == 'stripe_card' &&
-                                            (_stripePaymentMethodId == null ||
-                                                _stripePaymentMethodId!
-                                                    .isEmpty))) {
-                                      setState(() {
-                                        _error =
-                                            'Please provide a valid payment token or ID.';
-                                      });
-                                      return;
-                                    }
-                                    _fundWallet();
-                                  }
-                                },
-                        ),
+                      ButtonSegment(
+                        value: FundWalletMode.child,
+                        label: Text('Child'),
+                        icon: Icon(Icons.child_care),
                       ),
                     ],
+                    selected: {_mode},
+                    onSelectionChanged: (value) =>
+                        setState(() => _mode = value.first),
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _amountCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Amount',
+                      prefixIcon: Icon(Icons.attach_money),
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) {
+                      final value = double.tryParse((v ?? '').trim());
+                      if (value == null || value <= 0) {
+                        return 'Enter a valid amount';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  if (_mode == FundWalletMode.child) ...[
+                    DropdownButtonFormField<int>(
+                      initialValue: _selectedChildId,
+                      decoration: const InputDecoration(
+                        labelText: 'Child',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _children
+                          .map(
+                            (child) => DropdownMenuItem<int>(
+                              value: child['id'] as int,
+                              child: Text(child['name']?.toString() ?? 'Child'),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() => _selectedChildId = value);
+                        if (value != null) {
+                          _loadThresholds(value);
+                        }
+                      },
+                      validator: (_) =>
+                          _children.isEmpty ? 'Add a child first' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue: _fundingSource,
+                      decoration: const InputDecoration(
+                        labelText: 'Source',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'new_money',
+                          child: Text('Load new money and apply now'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'parent_balance',
+                          child: Text('Use existing parent wallet balance'),
+                        ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _fundingSource = value ?? 'new_money'),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (_mode == FundWalletMode.general ||
+                      (_mode == FundWalletMode.child &&
+                          _fundingSource == 'new_money')) ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: _paymentMethod,
+                      decoration: const InputDecoration(
+                        labelText: 'Payment method',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'bank_transfer',
+                          child: Text('Manual bank transfer'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'mercadopago',
+                          child: Text('Mercado Pago'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'stripe_card',
+                          child: Text('Stripe card'),
+                        ),
+                      ],
+                      onChanged: (value) => setState(
+                        () => _paymentMethod = value ?? 'bank_transfer',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (_mode == FundWalletMode.child) ...[
+                    Text(
+                      'Warning Thresholds',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _generalThresholdCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'General warning threshold %',
+                        helperText:
+                            'Parent is warned when used money reaches this percent.',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ..._thresholdCtrls.entries.map(
+                      (entry) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: TextFormField(
+                          controller: entry.value,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: '${entry.key} warning %',
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      icon: _savingThresholds
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.notifications_active),
+                      label: const Text('Save Warning Thresholds'),
+                      onPressed: _savingThresholds ? null : _saveThresholds,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Buckets',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    ..._bucketCtrls.entries.map(
+                      (entry) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: TextFormField(
+                          controller: entry.value,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: entry.key,
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                  ],
+                  if (_message != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _message!,
+                      style: const TextStyle(color: Colors.green),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.check),
+                    label: Text(
+                      _mode == FundWalletMode.general
+                          ? 'Load Money'
+                          : 'Apply Money',
+                    ),
+                    onPressed: _saving ? null : _submit,
+                  ),
+                ],
               ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }

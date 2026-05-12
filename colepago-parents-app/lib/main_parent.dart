@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/parent_dashboard_screen.dart';
+import 'screens/merchant_dashboard_screen.dart';
 import 'screens/first_time_screen.dart';
 
 void main() {
@@ -21,9 +22,20 @@ class ColePagoParentsApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: LoginScreen(
-        onLoginSuccess: (token, parentId) async {
+        onLoginSuccess: (token, userId, role) async {
           final prefs = await SharedPreferences.getInstance();
-          final profileKey = 'profile_complete_$parentId';
+          if (role == 'merchant') {
+            if (!context.mounted) return;
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) =>
+                    MerchantDashboardScreen(token: token, merchantId: userId),
+              ),
+            );
+            return;
+          }
+
+          final profileKey = 'profile_complete_$userId';
           bool profileComplete = prefs.getBool(profileKey) ?? false;
 
           if (!profileComplete) {
@@ -31,7 +43,7 @@ class ColePagoParentsApp extends StatelessWidget {
             try {
               final api = ApiService();
               api.setToken(token);
-              final profile = await api.get('/parent/$parentId/profile');
+              final profile = await api.get('/parent/$userId/profile');
               profileComplete =
                   profile.isNotEmpty &&
                   (profile['mobile_phone'] ?? '').toString().isNotEmpty;
@@ -48,7 +60,7 @@ class ColePagoParentsApp extends StatelessWidget {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (_) =>
-                    ParentDashboardScreen(token: token, parentId: parentId),
+                    ParentDashboardScreen(token: token, parentId: userId),
               ),
             );
           } else {
@@ -56,18 +68,9 @@ class ColePagoParentsApp extends StatelessWidget {
               MaterialPageRoute(
                 builder: (_) => FirstTimeScreen(
                   token: token,
-                  parentId: parentId,
+                  parentId: userId,
                   onSetupComplete: () async {
                     await prefs.setBool(profileKey, true);
-                    if (!context.mounted) return;
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                        builder: (_) => ParentDashboardScreen(
-                          token: token,
-                          parentId: parentId,
-                        ),
-                      ),
-                    );
                   },
                 ),
               ),

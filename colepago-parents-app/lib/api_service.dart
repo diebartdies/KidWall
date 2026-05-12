@@ -91,6 +91,60 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> getParentDashboardEconomy(int parentId) {
+    return get('/parent/$parentId/dashboard_economy');
+  }
+
+  Future<List<Map<String, dynamic>>> getChildWalletBuckets(int childId) async {
+    final data = await getList('/child/$childId/wallet_buckets');
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> fundWallet({
+    required int parentId,
+    required double amount,
+    String paymentMethod = 'bank_transfer',
+  }) {
+    return post('/wallet/fund', {
+      'parent_id': parentId,
+      'amount_pesos': amount,
+      'payment_method': paymentMethod,
+      if (paymentMethod == 'bank_transfer') 'bank_account': 'manual-test',
+      if (paymentMethod == 'mercadopago') 'mp_token': 'manual-test',
+      if (paymentMethod == 'stripe_card')
+        'stripe_payment_method_id': 'manual-test',
+    });
+  }
+
+  Future<Map<String, dynamic>> allocateWalletToChild({
+    required int parentId,
+    required int childId,
+    required double amount,
+    required List<Map<String, dynamic>> buckets,
+  }) {
+    return post('/wallet/allocate', {
+      'parent_id': parentId,
+      'child_id': childId,
+      'amount_pesos': amount,
+      'buckets': buckets,
+    });
+  }
+
+  Future<Map<String, dynamic>> updateChildBucketThresholds({
+    required int parentId,
+    required int childId,
+    int? defaultThresholdPct,
+    required List<Map<String, dynamic>> buckets,
+  }) {
+    return put('/child/$childId/wallet_buckets/thresholds', {
+      'parent_id': parentId,
+      ...defaultThresholdPct == null
+          ? {}
+          : {'default_threshold_pct': defaultThresholdPct},
+      'buckets': buckets,
+    });
+  }
+
   Future<Map<String, dynamic>> spendCoins({
     required int childId,
     required int merchantId,
@@ -119,6 +173,30 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> createMerchantSaleQr({
+    required int merchantId,
+    required List<Map<String, dynamic>> items,
+    String? note,
+  }) {
+    return post('/merchant/sales/qr', {
+      'merchant_id': merchantId,
+      'items': items,
+      if (note != null && note.isNotEmpty) 'note': note,
+    });
+  }
+
+  Future<Map<String, dynamic>> payMerchantSale({
+    required int childId,
+    required String bucketName,
+    required String salePayload,
+  }) {
+    return post('/child/pay-sale', {
+      'child_id': childId,
+      'bucket_name': bucketName,
+      'sale_payload': salePayload,
+    });
+  }
+
   Future<Map<String, dynamic>> register(
     String name,
     String email,
@@ -138,7 +216,8 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Failed to register');
+      final body = jsonDecode(response.body);
+      throw Exception(body['detail'] ?? 'Failed to register');
     }
   }
 
@@ -249,8 +328,20 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('POST $endpoint failed');
+      throw Exception('POST $endpoint failed: ${response.body}');
     }
+  }
+
+  Future<Map<String, dynamic>> kidLogin({
+    required String parentEmail,
+    required String parentPassword,
+    required String childMobilePhone,
+  }) async {
+    return post('/auth/kid-login', {
+      'parent_email': parentEmail,
+      'parent_password': parentPassword,
+      'child_mobile_phone': childMobilePhone,
+    });
   }
 
   Future<Map<String, dynamic>> put(

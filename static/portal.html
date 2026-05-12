@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ColePago App</title>
+  <link rel="stylesheet" href="/static/portal.css" />
+  <script src="https://js.stripe.com/v3/"></script>
+  <script defer src="/static/portal.js"></script>
+</head>
+<body>
+  <main class="app-shell">
+    <section id="auth-view" class="auth-layout">
+      <div class="brand-panel">
+        <img src="/static/school-pass-backpack-icon-colorful.svg" alt="ColePago" />
+        <h1>ColePago</h1>
+      </div>
+
+      <section class="auth-panel" aria-label="ColePago sign in">
+        <div class="tabs" role="tablist">
+          <button id="login-tab" class="active" type="button">Login</button>
+          <button id="register-tab" type="button">Register</button>
+        </div>
+
+        <form id="login-form" class="form-stack">
+          <label>
+            Email
+            <input id="login-email" name="email" type="email" autocomplete="email" required />
+          </label>
+          <label>
+            Password
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <button class="primary-action" type="submit">Login</button>
+        </form>
+
+        <form id="register-form" class="form-stack hidden">
+          <label>
+            Role
+            <select id="register-role" name="role">
+              <option value="parent">Parent</option>
+              <option value="merchant">Merchant</option>
+            </select>
+          </label>
+          <label>
+            Name
+            <input id="register-name" name="name" type="text" autocomplete="name" required />
+          </label>
+          <label>
+            Username
+            <input id="register-username" name="username" type="text" autocomplete="username" />
+          </label>
+          <label>
+            Email
+            <input id="register-email" name="email" type="email" autocomplete="email" required />
+          </label>
+          <label>
+            Password
+            <input id="register-password" name="password" type="password" autocomplete="new-password" required />
+          </label>
+          <button class="primary-action" type="submit">Create Account</button>
+        </form>
+
+        <p id="auth-message" class="message" role="status"></p>
+      </section>
+    </section>
+
+    <section id="workspace-view" class="workspace hidden">
+      <header class="workspace-header">
+        <div>
+          <p id="session-role" class="eyebrow"></p>
+          <h1 id="session-title">ColePago</h1>
+        </div>
+        <div class="header-actions">
+          <button id="admin-menu-button" class="secondary-action hidden" type="button">Admin Config</button>
+          <button id="theme-toggle-button" class="secondary-action" type="button">Dark</button>
+          <button id="logout-button" class="secondary-action" type="button">Logout</button>
+        </div>
+      </header>
+
+      <section id="parent-workspace" class="parent-flow hidden">
+        <form id="parent-profile-form" class="tool-panel">
+          <h2>Parent Information</h2>
+          <label>
+            Parent name
+            <input id="parent-name" type="text" autocomplete="name" required />
+          </label>
+          <label>
+            Relationship to child
+            <select id="parent-relationship" required>
+              <option value="">Select</option>
+              <option>Father</option>
+              <option>Mother</option>
+              <option>Legal Guardian</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <label>
+            How many children will use ColePago?
+            <input id="parent-children-count" type="number" min="1" step="1" required />
+          </label>
+          <label>
+            Mobile phone
+            <input id="parent-mobile" type="tel" required />
+          </label>
+          <label>
+            Country
+            <select id="parent-country" required>
+              <option value="United States" data-code="+1">United States</option>
+              <option value="Argentina" data-code="+54">Argentina</option>
+              <option value="Mexico" data-code="+52">Mexico</option>
+              <option value="Brazil" data-code="+55">Brazil</option>
+              <option value="Chile" data-code="+56">Chile</option>
+              <option value="Colombia" data-code="+57">Colombia</option>
+              <option value="Uruguay" data-code="+598">Uruguay</option>
+              <option value="Paraguay" data-code="+595">Paraguay</option>
+              <option value="Peru" data-code="+51">Peru</option>
+              <option value="Spain" data-code="+34">Spain</option>
+            </select>
+          </label>
+          <label>
+            Country code
+            <input id="parent-country-code" type="text" value="+1" />
+          </label>
+          <label>
+            Home address
+            <input id="parent-home-address" type="text" />
+          </label>
+          <label>
+            Home phone
+            <input id="parent-home-phone" type="tel" />
+          </label>
+          <button class="primary-action" type="submit">Save Parent</button>
+        </form>
+
+        <section id="kid-economy-frame" class="tool-panel dashboard-frame">
+          <div class="panel-heading">
+            <div>
+              <h2>Kids Economic Situation</h2>
+              <p id="kid-economy-summary" class="summary-line"></p>
+            </div>
+            <details class="dashboard-menu">
+              <summary aria-label="Dashboard actions">☰</summary>
+              <button id="menu-parent-info" type="button">Modify parent information</button>
+              <button id="menu-kid-info" type="button">Modify kid information</button>
+              <button id="menu-money-info" type="button">Load or apply money</button>
+              <button id="menu-call-parent" type="button">Call parent phone</button>
+            </details>
+          </div>
+          <label>
+            Browse kid
+            <select id="economy-child"></select>
+          </label>
+          <div id="kid-economy-detail" class="kid-economy-detail"></div>
+          <section class="accelerometer-panel">
+            <div class="panel-heading">
+              <div>
+                <h3>Movement</h3>
+                <p id="accelerometer-summary" class="summary-line">No movement samples yet.</p>
+              </div>
+            </div>
+            <canvas id="accelerometer-chart" height="150"></canvas>
+          </section>
+        </section>
+
+        <form id="child-form" class="tool-panel kid-frame">
+          <h2 id="child-form-title">Add Child</h2>
+          <div class="form-actions child-nav-actions">
+            <button id="child-prev-button" class="secondary-action" type="button">Previous</button>
+            <button id="child-next-button" class="secondary-action" type="button">Next</button>
+          </div>
+          <label>
+            Full name
+            <input id="child-name" type="text" required />
+          </label>
+          <label>
+            Kid phone number
+            <input id="child-mobile-phone" type="tel" required />
+          </label>
+          <p class="explain-line">
+            We ask for school, shift, route, and activity details so parents can be warned if a child separates from the normal walk, bus, school route, or expected activity schedule.
+          </p>
+          <label>
+            State / Province
+            <select id="child-school-province" required></select>
+          </label>
+          <label>
+            City
+            <select id="child-school-city" required></select>
+          </label>
+          <label id="child-school-neighborhood-wrap" class="hidden">
+            Neighborhood / comuna
+            <select id="child-school-neighborhood"></select>
+          </label>
+          <label>
+            Search/select school
+            <select id="child-school-select"></select>
+          </label>
+          <label>
+            School attending
+            <input id="child-school-name" type="text" required />
+          </label>
+          <label>
+            School shift
+            <select id="child-shift" required>
+              <option value="">Select</option>
+              <option>Morning</option>
+              <option>Afternoon</option>
+              <option>Evening</option>
+              <option>Full day</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <div class="two-col">
+            <label>
+              Shift starts
+              <input id="child-shift-start" type="text" placeholder="08:00" required />
+            </label>
+            <label>
+              Shift ends
+              <input id="child-shift-end" type="text" placeholder="15:00" required />
+            </label>
+          </div>
+          <label class="check-row">
+            <input id="child-lives-with-parent" type="checkbox" checked />
+            <span>Does this child live with you?</span>
+          </label>
+          <div id="child-home-fields" class="hidden">
+            <label>
+              Child home address
+              <input id="child-home-address" type="text" />
+            </label>
+            <label>
+              Child home phone
+              <input id="child-home-phone" type="tel" />
+            </label>
+          </div>
+          <div class="activity-box">
+            <h3>Additional Activities</h3>
+            <div id="child-activities-list" class="activity-list"></div>
+            <label>
+              When
+              <select id="activity-period">
+                <option value="before_shift">Before school shift</option>
+                <option value="after_shift" selected>After school shift</option>
+              </select>
+            </label>
+            <label>
+              Activity type
+              <select id="activity-type">
+                <option value="">Select</option>
+                <option>Dance</option>
+                <option>Language lessons</option>
+                <option>Music</option>
+                <option>Soccer</option>
+                <option>Baseball</option>
+                <option>Other sports practice</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label>
+              Activity name / detail
+              <input id="activity-name" type="text" placeholder="English lessons, soccer practice" />
+            </label>
+            <div class="two-col">
+              <label>
+                Starts
+                <input id="activity-start" type="text" placeholder="16:00" />
+              </label>
+              <label>
+                Ends
+                <input id="activity-end" type="text" placeholder="17:30" />
+              </label>
+            </div>
+            <label>
+              Activity place address
+              <input id="activity-address" type="text" />
+            </label>
+            <label>
+              Activity place name
+              <input id="activity-institution" type="text" />
+            </label>
+            <label>
+              Activity place phone
+              <input id="activity-phone" type="tel" />
+            </label>
+            <label>
+              Teacher / professor / coach
+              <input id="activity-professor" type="text" />
+            </label>
+            <button id="add-activity-button" class="secondary-action" type="button">Add Activity</button>
+          </div>
+          <button class="primary-action" type="submit">Save Child</button>
+          <p id="child-progress" class="message"></p>
+        </form>
+
+        <form id="money-form" class="tool-panel money-frame">
+          <h2>Load Money</h2>
+          <p id="wallet-summary" class="summary-line"></p>
+          <label>
+            Destination
+            <select id="money-mode">
+              <option value="general">General parent wallet</option>
+              <option value="child">Child and buckets</option>
+            </select>
+          </label>
+          <label>
+            Amount
+            <input id="money-amount" type="number" min="0.01" step="0.01" required />
+          </label>
+          <div id="payment-fields">
+            <label>
+              Payment method
+              <select id="money-payment-method">
+                <option value="bank_transfer">Manual bank transfer</option>
+                <option value="mercadopago">Mercado Pago</option>
+                <option value="stripe_card">Stripe card</option>
+              </select>
+            </label>
+            <div id="stripe-card-block" class="stripe-card-block hidden">
+              <label>
+                Card
+                <div id="stripe-card-element" class="stripe-card-element"></div>
+              </label>
+              <p id="stripe-payment-status" class="message"></p>
+            </div>
+          </div>
+          <div id="bucket-fields" class="hidden">
+            <label>
+              Child
+              <select id="money-child"></select>
+            </label>
+            <label>
+              General warning threshold %
+              <input id="threshold-general" type="number" min="1" max="100" step="1" value="80" />
+            </label>
+            <div class="two-col">
+              <label>
+                Lunch / Snacks warning %
+                <input id="threshold-lunch" type="number" min="1" max="100" step="1" />
+              </label>
+              <label>
+                Books warning %
+                <input id="threshold-books" type="number" min="1" max="100" step="1" />
+              </label>
+            </div>
+            <div class="two-col">
+              <label>
+                Fotocopies warning %
+                <input id="threshold-fotocopies" type="number" min="1" max="100" step="1" />
+              </label>
+              <label>
+                Transport warning %
+                <input id="threshold-transport" type="number" min="1" max="100" step="1" />
+              </label>
+            </div>
+            <label>
+              General bucket warning %
+              <input id="threshold-general-bucket" type="number" min="1" max="100" step="1" />
+            </label>
+            <button id="save-thresholds-button" class="secondary-action" type="button">Save Warning Thresholds</button>
+            <label>
+              Lunch / Snacks
+              <input id="bucket-lunch" type="number" min="0" step="0.01" />
+            </label>
+            <label>
+              Books
+              <input id="bucket-books" type="number" min="0" step="0.01" />
+            </label>
+            <label>
+              Fotocopies
+              <input id="bucket-fotocopies" type="number" min="0" step="0.01" />
+            </label>
+            <label>
+              Transport
+              <input id="bucket-transport" type="number" min="0" step="0.01" />
+            </label>
+            <label>
+              General
+              <input id="bucket-general" type="number" min="0" step="0.01" />
+            </label>
+          </div>
+          <button class="primary-action" type="submit">Apply Money</button>
+        </form>
+      </section>
+
+      <section id="merchant-workspace" class="workspace-grid hidden">
+        <form id="merchant-profile-form" class="tool-panel">
+          <h2>Merchant Information</h2>
+          <label>
+            Place
+            <select id="merchant-place" required>
+              <option value="">Select</option>
+              <option value="inside_school">Within school</option>
+              <option value="outside_school">Outside school</option>
+            </select>
+          </label>
+          <label>
+            Business name
+            <input id="merchant-business-name" type="text" required />
+          </label>
+          <label>
+            Address if outside school
+            <input id="merchant-address" type="text" />
+          </label>
+          <label>
+            Personal name
+            <input id="merchant-personal-name" type="text" required />
+          </label>
+          <label>
+            Mobile phone
+            <input id="merchant-mobile" type="tel" required />
+          </label>
+          <label>
+            Country code
+            <input id="merchant-country-code" type="text" value="+54" />
+          </label>
+          <label>
+            Transfer type
+            <select id="merchant-transfer-type" required>
+              <option value="">Select</option>
+              <option value="CVU">CVU</option>
+              <option value="CBU">CBU</option>
+            </select>
+          </label>
+          <label>
+            CVU or CBU
+            <input id="merchant-transfer-account" type="text" />
+          </label>
+          <label>
+            CVU or CBU alias
+            <input id="merchant-transfer-alias" type="text" />
+          </label>
+          <button class="primary-action" type="submit">Save Merchant</button>
+        </form>
+      </section>
+
+      <section id="admin-workspace" class="tool-panel admin-frame hidden">
+        <h2>Admin Configuration</h2>
+        <form id="admin-settings-form">
+          <label>
+            Fee percent
+            <input id="admin-fee-percent" type="number" min="0" max="25" step="0.01" />
+          </label>
+          <label>
+            Fee payer
+            <select id="admin-fee-payer">
+              <option value="merchant">Merchant</option>
+              <option value="parent">Parent</option>
+              <option value="split">Split</option>
+              <option value="school">School</option>
+            </select>
+          </label>
+          <label>
+            Currency
+            <input id="admin-currency" type="text" maxlength="3" />
+          </label>
+          <label>
+            Country
+            <input id="admin-country" type="text" />
+          </label>
+          <label>
+            Society profile
+            <input id="admin-society-profile" type="text" />
+          </label>
+          <label>
+            Religion context
+            <input id="admin-religion-context" type="text" />
+          </label>
+          <label class="full-width">
+            Local policy notes
+            <textarea id="admin-local-policy-notes" rows="3"></textarea>
+          </label>
+          <label class="full-width">
+            Merchant fee disclosure
+            <textarea id="admin-merchant-fee-disclosure" rows="2"></textarea>
+          </label>
+          <button class="primary-action" type="submit">Save Admin Settings</button>
+          <p id="admin-settings-status" class="message"></p>
+        </form>
+      </section>
+
+      <p id="workspace-message" class="message" role="status"></p>
+    </section>
+  </main>
+</body>
+</html>

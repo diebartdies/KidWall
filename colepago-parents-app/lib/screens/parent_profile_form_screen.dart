@@ -15,6 +15,19 @@ const _relationships = [
 
 const _shifts = ['Morning', 'Afternoon', 'Night', 'Rotating', 'Remote'];
 
+const _countries = [
+  {'name': 'United States', 'code': '+1'},
+  {'name': 'Argentina', 'code': '+54'},
+  {'name': 'Mexico', 'code': '+52'},
+  {'name': 'Brazil', 'code': '+55'},
+  {'name': 'Chile', 'code': '+56'},
+  {'name': 'Colombia', 'code': '+57'},
+  {'name': 'Uruguay', 'code': '+598'},
+  {'name': 'Paraguay', 'code': '+595'},
+  {'name': 'Peru', 'code': '+51'},
+  {'name': 'Spain', 'code': '+34'},
+];
+
 class ParentProfileFormScreen extends StatefulWidget {
   final String token;
   final int parentId;
@@ -40,7 +53,9 @@ class _ParentProfileFormScreenState extends State<ParentProfileFormScreen> {
 
   String? _relationship;
   String? _shift;
+  String? _country = 'United States';
 
+  final _childrenUsingColePagoCtrl = TextEditingController();
   final _mobileCtrl = TextEditingController();
   final _countryCodeCtrl = TextEditingController(text: '+1');
   final _emailCtrl = TextEditingController();
@@ -68,8 +83,11 @@ class _ParentProfileFormScreenState extends State<ParentProfileFormScreen> {
           _relationship = _relationships.contains(data['relationship_to_child'])
               ? data['relationship_to_child']
               : null;
+          _childrenUsingColePagoCtrl.text =
+              data['children_using_colepago']?.toString() ?? '';
           _mobileCtrl.text = data['mobile_phone'] ?? '';
-          _countryCodeCtrl.text = data['country_code'] ?? '+1';
+          _country = _countryFromProfile(data['country'], data['country_code']);
+          _countryCodeCtrl.text = data['country_code'] ?? _codeForCountry(_country);
           _emailCtrl.text = data['email'] ?? '';
           _homeAddressCtrl.text = data['home_address'] ?? '';
           _homePostalCtrl.text = data['home_postal'] ?? '';
@@ -99,7 +117,11 @@ class _ParentProfileFormScreenState extends State<ParentProfileFormScreen> {
     try {
       await _api.put('/parent/${widget.parentId}/profile', {
         'relationship_to_child': _relationship,
+        'children_using_colepago': int.tryParse(
+          _childrenUsingColePagoCtrl.text.trim(),
+        ),
         'mobile_phone': _mobileCtrl.text.trim(),
+        'country': _country,
         'country_code': _countryCodeCtrl.text.trim(),
         'email': _emailCtrl.text.trim(),
         'home_address': _homeAddressCtrl.text.trim(),
@@ -123,6 +145,7 @@ class _ParentProfileFormScreenState extends State<ParentProfileFormScreen> {
   @override
   void dispose() {
     for (final c in [
+      _childrenUsingColePagoCtrl,
       _mobileCtrl,
       _countryCodeCtrl,
       _emailCtrl,
@@ -186,6 +209,31 @@ class _ParentProfileFormScreenState extends State<ParentProfileFormScreen> {
                     value: _relationship,
                     items: _relationships,
                     onChanged: (v) => setState(() => _relationship = v),
+                    required: true,
+                  ),
+                  const SizedBox(height: 12),
+                  _textField(
+                    _childrenUsingColePagoCtrl,
+                    'How many children will use ColePago?',
+                    keyboardType: TextInputType.number,
+                    required: true,
+                    validator: (v) {
+                      final count = int.tryParse((v ?? '').trim());
+                      if (count == null || count <= 0) {
+                        return 'Enter a valid number';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _dropdownField(
+                    label: 'Country',
+                    value: _country,
+                    items: _countries.map((c) => c['name']!).toList(),
+                    onChanged: (v) => setState(() {
+                      _country = v;
+                      _countryCodeCtrl.text = _codeForCountry(v);
+                    }),
                     required: true,
                   ),
                   const SizedBox(height: 12),
@@ -298,12 +346,32 @@ class _ParentProfileFormScreenState extends State<ParentProfileFormScreen> {
     ),
   );
 
+  String _codeForCountry(String? country) {
+    return _countries.firstWhere(
+      (c) => c['name'] == country,
+      orElse: () => _countries.first,
+    )['code']!;
+  }
+
+  String _countryFromProfile(dynamic country, dynamic code) {
+    final countryText = country?.toString();
+    if (_countries.any((c) => c['name'] == countryText)) {
+      return countryText!;
+    }
+    final codeText = code?.toString();
+    return _countries.firstWhere(
+      (c) => c['code'] == codeText,
+      orElse: () => _countries.first,
+    )['name']!;
+  }
+
   Widget _textField(
     TextEditingController ctrl,
     String label, {
     String? hint,
     TextInputType keyboardType = TextInputType.text,
     bool required = false,
+    String? Function(String?)? validator,
   }) => TextFormField(
     controller: ctrl,
     keyboardType: keyboardType,
@@ -313,9 +381,11 @@ class _ParentProfileFormScreenState extends State<ParentProfileFormScreen> {
       border: const OutlineInputBorder(),
       isDense: true,
     ),
-    validator: required
-        ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
-        : null,
+    validator:
+        validator ??
+        (required
+            ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
+            : null),
   );
 
   Widget _dropdownField({

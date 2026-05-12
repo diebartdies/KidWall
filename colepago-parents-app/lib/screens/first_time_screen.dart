@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import '../api_service.dart';
 import 'parent_profile_form_screen.dart';
 import 'add_child_screen.dart';
+import 'parent_dashboard_screen.dart';
 
-class FirstTimeScreen extends StatelessWidget {
+class FirstTimeScreen extends StatefulWidget {
   final String token;
   final int parentId;
-  final VoidCallback onSetupComplete;
+  final Future<void> Function() onSetupComplete;
 
   const FirstTimeScreen({
     super.key,
@@ -13,6 +15,78 @@ class FirstTimeScreen extends StatelessWidget {
     required this.parentId,
     required this.onSetupComplete,
   });
+
+  @override
+  State<FirstTimeScreen> createState() => _FirstTimeScreenState();
+}
+
+class _FirstTimeScreenState extends State<FirstTimeScreen> {
+  Future<int> _childrenCount() async {
+    try {
+      final api = ApiService();
+      api.setToken(widget.token);
+      final profile = await api.get('/parent/${widget.parentId}/profile');
+      final value = profile['children_using_colepago'];
+      if (value is int && value > 0) return value;
+      return int.tryParse(value.toString()) ?? 1;
+    } catch (_) {
+      return 1;
+    }
+  }
+
+  Future<void> _openChildrenSetup() async {
+    final count = await _childrenCount();
+    if (!mounted) return;
+    final completed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddChildScreen(
+          token: widget.token,
+          parentId: widget.parentId,
+          setupTotalChildren: count,
+        ),
+      ),
+    );
+    if (completed == true) await _completeSetup();
+  }
+
+  Future<void> _completeSetup() async {
+    await widget.onSetupComplete();
+    if (!mounted) return;
+    await _showKidInstallPrompt();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => ParentDashboardScreen(
+          token: widget.token,
+          parentId: widget.parentId,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showKidInstallPrompt() {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Install Kid APK'),
+        content: const Text(
+          'Install ColePago Kids on the child phone. Activate it with the parent email, parent password, and the kid phone number. Configure fingerprint, face or eye detection, or a stored password fallback. Then test access and confirm the buckets are visible clearly before loading money.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Continue to Dashboard'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text("I'll do it now"),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,12 +127,14 @@ class FirstTimeScreen extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (_) => ParentProfileFormScreen(
-                              token: token,
-                              parentId: parentId,
+                              token: widget.token,
+                              parentId: widget.parentId,
                             ),
                           ),
                         );
-                        if (completed == true) onSetupComplete();
+                        if (completed == true) {
+                          await _openChildrenSetup();
+                        }
                       },
                     ),
                     const SizedBox(width: 24),
@@ -67,16 +143,19 @@ class FirstTimeScreen extends StatelessWidget {
                       label: 'Add Kid',
                       color: const Color(0xFF00897B),
                       onTap: () async {
+                        final count = await _childrenCount();
+                        if (!context.mounted) return;
                         final completed = await Navigator.push<bool>(
                           context,
                           MaterialPageRoute(
                             builder: (_) => AddChildScreen(
-                              token: token,
-                              parentId: parentId,
+                              token: widget.token,
+                              parentId: widget.parentId,
+                              setupTotalChildren: count,
                             ),
                           ),
                         );
-                        if (completed == true) onSetupComplete();
+                        if (completed == true) await _completeSetup();
                       },
                     ),
                   ],

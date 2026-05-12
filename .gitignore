@@ -3,3 +3,4 @@
 colepago/.env
 backups/.env.backup
 backups/
+config/admin_settings.json

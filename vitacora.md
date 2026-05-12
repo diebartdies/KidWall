@@ -437,6 +437,591 @@ School import notes:
   - Replace placeholder generated bearer token with durable signed auth if/when protected endpoints enforce authorization.
   - Add role-based navigation for merchant users.
 
+#### Merchant Information Profile
+
+- Added merchant profile data model and migration:
+  - `models.py`
+  - `alembic/versions/g7h8i9j0k1l2_add_merchant_profiles.py`
+- Merchant profile fields:
+  - place scope: within school / outside school
+  - business name
+  - address for outside-school merchants
+  - personal contact name
+  - mobile phone
+  - country code
+  - transfer account type: CVU / CBU
+  - transfer account value
+  - transfer account alias
+- Added backend endpoints:
+  - `GET /api/merchant/{merchant_id}/profile`
+  - `PUT /api/merchant/{merchant_id}/profile`
+- Added Flutter merchant UI:
+  - `merchant_dashboard_screen.dart`
+  - `merchant_profile_form_screen.dart`
+- Updated Flutter auth flow:
+  - login/register callback now carries user role
+  - merchant users route to merchant dashboard
+  - parent users keep the existing parent first-time/profile flow
+- Verification:
+  - Alembic migration applied to the active local PostgreSQL database.
+  - Verified `merchant_profiles` table columns in PostgreSQL.
+  - Python syntax check passed for changed backend files.
+  - `dart analyze` passed.
+- Follow-up:
+  - Added optional CVU/CBU alias support:
+    - `transfer_account_alias`
+    - `alembic/versions/h8i9j0k1l2m3_add_merchant_transfer_alias.py`
+  - Applied the alias migration to the active local PostgreSQL database.
+  - Verified Alembic DB revision is `h8i9j0k1l2m3`.
+- Pending:
+  - Connect CVU/CBU profile data to the merchant payout method flow.
+
+#### Parent Children Count Field
+
+- Added one more parent profile field:
+  - `children_using_colepago`
+- UI label:
+  - `How many children will use ColePago?`
+- Language decision:
+  - Use `children` for plural.
+  - Avoid `childs`; it is not standard English.
+  - `kids` is understandable but more casual than `children`.
+- Files changed:
+  - `models.py`
+  - `colepago/api/router.py`
+  - `colepago-parents-app/lib/screens/parent_profile_form_screen.dart`
+  - `alembic/versions/i9j0k1l2m3n4_add_parent_children_using_colepago.py`
+- Verification:
+  - Alembic migration applied to active local PostgreSQL database.
+  - Verified `parent_profiles.children_using_colepago` exists as integer.
+  - Verified Alembic DB revision is `i9j0k1l2m3n4`.
+  - Python syntax check passed.
+  - `dart analyze` passed.
+
+#### First-Time Child Setup Iteration
+
+- Updated first-time parent setup so `children_using_colepago` drives child entry.
+- Flow:
+  - Parent completes profile.
+  - App reads `children_using_colepago`.
+  - Add-child screen iterates through that many child forms.
+  - Progress is shown as `Child X of N`.
+  - Setup completes only after the final child is saved.
+- Updated:
+  - `colepago-parents-app/lib/screens/first_time_screen.dart`
+  - `colepago-parents-app/lib/screens/add_child_screen.dart`
+- Verification:
+  - `dart analyze` passed.
+
+#### Child Home Data Inheritance
+
+- Added child home inheritance support to reduce parent data entry.
+- UI asks:
+  - `Does this child live with you?`
+- Behavior:
+  - If yes, backend inherits `home_address` and `home_phone` from the parent profile.
+  - If no, add-child form asks for the child's home address and optional home phone.
+  - Backend rejects separate-home child creation without a child home address.
+- Added child fields:
+  - `lives_with_parent`
+  - `home_address`
+  - `home_phone`
+- Added/updated backend endpoint:
+  - `POST /api/parent/add-child`
+- Files changed:
+  - `models.py`
+  - `colepago/api/router.py`
+  - `colepago-parents-app/lib/screens/add_child_screen.dart`
+  - `alembic/versions/j0k1l2m3n4o5_add_child_home_inheritance_fields.py`
+- Verification:
+  - Alembic migration applied to active local PostgreSQL database.
+  - Verified child columns exist in PostgreSQL.
+  - Verified Alembic DB revision is `j0k1l2m3n4o5`.
+  - Restarted backend.
+  - Created a test child with `lives_with_parent=true`; inherited parent home address and phone.
+  - Verified `lives_with_parent=false` without child home address returns HTTP 400.
+  - Python syntax check passed.
+  - `dart analyze` passed.
+
+#### Web Root Login App
+
+- Replaced the root static marketing page with an app login/register page.
+- Root URL now serves the ColePago app entry point instead of the selling/brochure page:
+  - `http://api.drsrv.net.ar:8010/`
+- Added functional browser flows:
+  - parent login/register
+  - merchant login/register
+  - parent profile save
+  - child creation with `Does this child live with you?`
+  - merchant profile save with CVU/CBU and alias
+- Updated:
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+- Verification:
+  - Root HTML returns HTTP 200.
+  - Static JavaScript returns HTTP 200.
+  - Static CSS returns HTTP 200.
+  - Browser should be refreshed with cache bypass if old marketing assets remain cached.
+- Note:
+  - `node --check` could not run because Node.js is not installed on this host.
+
+#### Production-Like Web And App Routing
+
+- Restored the public brochure/marketing page at the root URL:
+  - `http://api.drsrv.net.ar:8010/`
+- Moved the browser test login/register app to:
+  - `http://api.drsrv.net.ar:8010/app`
+- Kept the real backend API under the same host:
+  - `http://api.drsrv.net.ar:8010/api`
+- This allows testing page, app, and API with one DNS entry and the same origin.
+- Files changed:
+  - `main.py`
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/portal.html`
+  - `static/portal.js`
+  - `static/portal.css`
+- Verification:
+  - Restarted the running backend process.
+  - Confirmed `http://api.drsrv.net.ar:8010/` returns the public page.
+  - Confirmed `http://api.drsrv.net.ar:8010/app` returns the login/register app.
+  - Confirmed `http://api.drsrv.net.ar:8010/api/ping` returns `pong`.
+
+#### Parent Country, Setup Completion, And Wallet Allocation
+
+- Added country capture to the parent profile flow.
+- Country now drives the default phone country code in:
+  - Flutter parent profile form
+  - `/app` browser test parent profile form
+- Added parent profile database field:
+  - `parent_profiles.country`
+- Added migration:
+  - `alembic/versions/k1l2m3n4o5p6_add_parent_country.py`
+- Added backend dashboard/wallet endpoints:
+  - `GET /api/parent/{parent_id}/wallet_summary`
+  - `GET /api/parent/{parent_id}/children`
+  - `GET /api/parent/{parent_id}/wallet_buckets`
+  - `GET /api/child/{child_id}/wallet_buckets`
+  - `GET /api/child/{child_id}/transactions`
+  - `POST /api/wallet/allocate`
+- Updated first-time setup completion:
+  - after the last child is saved, the app returns to the parent dashboard
+  - dashboard refreshes with wallet actions available
+- Updated parent dashboard:
+  - shows parent wallet balance
+  - shows total applied to children
+  - adds `Load Money`
+  - adds `Apply to Child`
+- Replaced the old Flutter funding screen:
+  - supports general parent wallet funding
+  - supports loading new money and applying it to a child immediately
+  - supports applying existing parent wallet balance to a child
+  - supports bucket allocation for Lunch / Snacks, Books, Fotocopies, Transport, and General
+- Updated `/app` browser test page:
+  - country selector
+  - phone code auto-fill
+  - wallet summary
+  - general wallet funding
+  - child bucket funding
+- Verification:
+  - Alembic upgraded active database to `k1l2m3n4o5p6`.
+  - Backend syntax check passed.
+  - Backend restarted.
+  - End-to-end API smoke test passed:
+    - created parent
+    - saved country/profile
+    - created child
+    - loaded 100 to parent wallet
+    - allocated 100 to child buckets
+    - verified parent balance 0 and child balance 100
+  - `dart analyze` passed.
+  - DNS API ping returned `pong`.
+  - DNS `/app` page contains country and money-loading UI.
+
+#### Child Setup Counter Clamp
+
+- Prevented impossible child setup labels such as:
+  - `Add Child 3 of 2`
+- Flutter:
+  - setup child index is clamped between 1 and the setup total
+  - progress bar value is clamped
+  - save action exits setup if a bad over-total index is reached
+- Browser `/app`:
+  - next child display is clamped to the configured target
+  - once target is reached, the child form shows completion and disables additional child entry
+  - existing child count is reconciled against the configured target when dashboard data loads
+- Files changed:
+  - `colepago-parents-app/lib/screens/add_child_screen.dart`
+  - `static/portal.js`
+- Verification:
+  - `dart analyze` passed.
+  - Live `/static/portal.js` contains the child counter clamp.
+
+#### Required Unique Kid Phone Number
+
+- Added required kid phone number to child creation.
+- Backend:
+  - `ChildCreateRequest.mobile_phone` is required.
+  - phone is normalized to digits and `+`.
+  - empty phone is rejected.
+  - duplicate phone is rejected before insert.
+  - child list and child creation responses include `mobile_phone`.
+- Database:
+  - added `children.mobile_phone`
+  - added unique index `ix_children_mobile_phone`
+  - migration `alembic/versions/l2m3n4o5p6q7_add_unique_child_mobile_phone.py`
+- Flutter:
+  - `AddChildScreen` asks for `Kid phone number`
+  - field is required before saving.
+- Browser `/app`:
+  - child form asks for required `Kid phone number`
+  - value is sent to `POST /api/parent/add-child`.
+- Verification:
+  - Backend syntax check passed.
+  - `dart analyze` passed.
+  - Alembic upgraded active database to `l2m3n4o5p6q7`.
+  - Backend restarted.
+  - API smoke test confirmed missing kid phone returns HTTP 422.
+  - API smoke test confirmed duplicate kid phone returns HTTP 400 with `Child phone number is already used`.
+  - DNS API ping returned `pong`.
+  - DNS `/app` contains the kid phone field.
+
+#### Child School Schedule And Activities
+
+- Added child school schedule capture.
+- Backend now requires and stores for each new child:
+  - school attending
+  - school shift
+  - shift start time
+  - shift end time
+  - additional activities JSON
+- Added child columns:
+  - `school_id`
+  - `school_name`
+  - `shift`
+  - `shift_start`
+  - `shift_end`
+  - `activities_json`
+- Added migration:
+  - `alembic/versions/m3n4o5p6q7r8_add_child_school_schedule.py`
+- Flutter child form:
+  - school search is now optional helper data
+  - `School attending` is required and can be filled manually
+  - `School shift` is required
+  - shift start/end hours are required
+  - extra activities can be added before or after school shift
+  - supported activity types include dance, language lessons, music, soccer, baseball, other sports practice, and other
+- Browser `/app` child form:
+  - added the same school, shift hours, and additional activities fields
+  - activities include before/after shift, type, name/detail, hours, address, institution, and teacher/professor/coach
+- Verification:
+  - Backend syntax check passed.
+  - `dart analyze` passed.
+  - Alembic upgraded active database to `m3n4o5p6q7r8`.
+  - Backend restarted.
+  - API smoke test created a child with school, shift hours, and two activities.
+  - Child list API returned the stored activities.
+  - DNS API ping returned `pong`.
+  - DNS `/app` contains the new child schedule fields.
+
+#### Route-Safety Explanation And Activity Place Contact
+
+- Added explanation in child setup for why school, shift, route, and activity data is requested:
+  - parents can be warned if a child separates from the normal walk, bus, school route, or expected activity schedule
+- Added additional activity place contact details:
+  - activity place name
+  - activity place address
+  - activity place phone
+- Backend:
+  - activity JSON now preserves `phone`
+- Flutter:
+  - added route-safety explanation card
+  - renamed activity fields to place name/address
+  - added activity place phone
+- Browser `/app`:
+  - added route-safety explanation text
+  - renamed activity fields to place name/address
+  - added activity place phone
+  - activity preview includes place/address/phone
+- Verification:
+  - `dart analyze` passed.
+  - Backend syntax check passed.
+  - Backend restarted.
+  - API smoke test confirmed activity place name, address, and phone are stored and returned.
+  - DNS API ping returned `pong`.
+  - DNS `/app` contains the explanation and activity place phone field.
+
+#### Kid APK Activation And Merchant QR Payment Flow
+
+- Backend:
+  - added `POST /api/auth/kid-login`
+  - kid activation uses parent email, parent password, and the child's unique phone number
+  - response returns the real `child_id` for the kid APK
+  - added `POST /api/merchant/sales/qr`
+  - added `POST /api/child/pay-sale`
+  - merchant sale payload includes merchant info, item descriptions, quantities, prices, line totals, total, note, and timestamp
+  - child payment validates the selected bucket and debits bucket spend after ledger purchase recording
+- Flutter kid APK:
+  - replaced normal user login with kid activation screen
+  - stores kid token and `kid_id` locally
+  - requires biometric/face/iris authentication before bucket display
+  - kid sees only wallet buckets
+  - selecting a bucket opens the camera QR scanner immediately
+- Flutter merchant flow:
+  - added sale page with multiple item rows
+  - calculates sale total
+  - renders a real QR code for the kid camera to scan
+- Parent setup:
+  - after last child setup, prompts parent to install the kid APK, activate it, configure secure access, and verify bucket visibility
+- Platform/dependencies:
+  - added `mobile_scanner`
+  - added `qr_flutter`
+  - added Android camera permission
+  - added iOS camera and Face ID usage descriptions
+- Verification:
+  - `flutter pub get` completed and updated lockfile.
+  - `dart analyze` passed.
+  - Backend syntax check passed.
+  - Backend restarted on port `8010`.
+  - API smoke test created disposable parent, child, merchant, funded wallet, allocated bucket money, activated kid login, created merchant sale QR payload, paid from selected bucket, and confirmed bucket remaining dropped from `60.0` to `30.0`.
+  - Kids debug APK build was attempted but timed out after 10 minutes before producing a debug APK; build-era Dart/Java processes were stopped.
+
+#### Item Bucket Routing, Bucket Borrowing, And Threshold Warnings
+
+- Backend:
+  - merchant sale items can now include `bucket_name`
+  - QR payment routes each item to its own bucket when present
+  - selected bucket remains the fallback for items without a bucket
+  - if the target bucket is short, payment can borrow from other child buckets with available money
+  - payment response returns bucket debits and borrowing details
+  - parent WhatsApp notification is attempted when borrowing happens or affected buckets cross their warning threshold
+  - notification text includes all affected buckets and borrowing details
+  - added `PUT /api/child/{child_id}/wallet_buckets/thresholds`
+  - wallet allocation can set `alert_threshold_pct` per bucket
+- Flutter kid APK:
+  - removed visible manual QR payload entry
+  - kid flow is now bucket tap -> camera opens -> QR scan -> payment
+- Flutter merchant flow:
+  - each sale item has a bucket selector
+  - QR payload carries item bucket names
+- Flutter parent flow:
+  - parent wallet screen has general warning threshold control
+  - parent wallet screen has per-bucket warning threshold controls
+  - thresholds can be saved independently or included when applying money to child buckets
+- Browser `/app` parent flow:
+  - parent money form has general and per-bucket warning threshold controls
+  - added Transport bucket support to match the APK bucket set
+  - thresholds can be saved independently or included when applying money
+- Verification:
+  - `dart analyze` passed.
+  - Backend syntax check passed.
+  - Backend restarted on port `8010`.
+  - API smoke test created disposable parent, child, merchant, funded wallet, allocated `Lunch / Snacks=5.0` and `Books=40.0`, created sale item routed to `Lunch / Snacks` for `20.0`, paid successfully by debiting `5.0` from Lunch and borrowing `15.0` from Books.
+  - Smoke test confirmed notification payload included affected buckets `Lunch / Snacks` and `Books`; send was blocked only because Twilio credentials are not configured in this environment.
+  - Browser `/app` served threshold controls and updated portal JavaScript over DNS.
+  - `node --check static/portal.js` could not run because Node.js is not installed on this host.
+  - DNS API ping returned `pong`.
+
+#### Email Format Validation
+
+- Confirmed backend registration rejects invalid email values through `EmailStr`.
+- Added client-side email format validation to:
+  - Flutter login screen
+  - Flutter register screen
+  - Flutter kid activation screen parent email
+  - Browser `/app` login form
+  - Browser `/app` register form
+- Improved Flutter registration error display so backend validation details are shown instead of only `Registration failed`.
+- Verification:
+  - Direct backend registration with `email=drcalo` returned HTTP `422` with invalid email detail.
+  - `dart analyze` passed.
+  - Backend syntax check passed.
+  - Browser `/app` served updated JavaScript containing email validation over DNS.
+
+#### Multi-Child Navigation And Scoped School Selection
+
+- Backend:
+  - added database-backed school selector endpoints:
+    - `GET /api/geo/provinces`
+    - `GET /api/geo/cities?province=...`
+    - `GET /api/geo/neighborhoods?province=...&city=...`
+    - `GET /api/geo/schools?province=...&city=...&neighborhood=...`
+  - school dropdowns use existing `schools` table fields:
+    - `provincia`
+    - `ciudad`
+    - `comuna`
+    - `name`
+    - `address`
+    - `phone`
+- Flutter:
+  - add-child setup now lets parents move Previous/Next between child forms during multi-child loading
+  - each child form keeps an in-memory draft while navigating
+  - saved child indexes are marked and are not re-submitted
+  - school search is split into State/Province -> City -> Neighborhood/Comuna when present -> School
+  - if no neighborhood/comuna data exists for a city, schools load directly after city selection
+- Browser `/app`:
+  - added Previous Child and Next Child controls
+  - added in-browser child drafts while navigating through setup children
+  - added State/Province, City, Neighborhood/Comuna, and School dropdowns
+  - selected school fills `School attending`
+- Verification:
+  - Database has about `188449` schools, `80` provinces/states, and `23972` cities; current loaded `comuna` values are empty, so UI falls back from city directly to schools when needed.
+  - `dart analyze` passed.
+  - Backend syntax check passed.
+  - Backend restarted on port `8010`.
+  - API smoke test returned `80` provinces, sample province `AK`, sample city `ANCHORAGE`, and sample school `ANCHORAGE JUNIOR ACADEMY`.
+  - Browser `/app` served the new province select, child navigation buttons, and school geo JavaScript over DNS.
+  - DNS API ping returned `pong`.
+
+#### Parent Workspace Frames And Parent Name
+
+- Added parent name to the parent profile API:
+  - `GET /api/parent/{parent_id}/profile` now returns `name`
+  - `PUT /api/parent/{parent_id}/profile` accepts `name`
+  - saving parent profile updates `users.name`
+- Browser `/app` parent workspace now uses a vertical frame flow:
+  - Parent Information at the top
+  - Add/Browse Kids below
+  - Load Money at the end
+- Browser parent information frame now includes:
+  - Parent name
+  - Relationship
+  - Children count
+  - Parent phone/country/address details
+- Verification:
+  - Backend syntax check passed.
+  - `dart analyze` passed.
+  - Backend restarted on port `8010`.
+  - API smoke test saved parent profile name as `Updated Parent Name` and loaded it back successfully.
+  - Browser `/app` served the parent name field, parent frame layout, CSS, and JavaScript over DNS.
+
+#### Kid Economy Dashboard And Modify Menu
+
+- Backend:
+  - added `GET /api/parent/{parent_id}/dashboard_economy`
+  - returns parent balance, children balance, and per-kid economy details:
+    - child balance
+    - total remaining money
+    - 7-day spend
+    - 30-day spend
+    - daily spend rate
+    - estimated days left
+    - affected/warning buckets
+    - per-bucket allocated, spent, remaining, used percent, threshold, and status
+- Flutter parent dashboard:
+  - added Kids Economic Situation section
+  - each kid card shows remaining money, spend rate, 7-day spend, estimated days left, and bucket progress
+  - hamburger menu actions now give quick access to:
+    - modify parent information
+    - modify kid information
+    - load or apply money
+- Browser `/app`:
+  - added Kids Economic Situation frame between Parent Information and Add/Browse Kids
+  - added kid dropdown to browse each kid's economy
+  - shows metrics and bucket warning state
+  - added hamburger/dropdown menu to jump to parent info, kid info, or money frame
+- Verification:
+  - Backend syntax check passed.
+  - `dart analyze` passed.
+  - Backend restarted on port `8010`.
+  - API smoke test created disposable parent, kid, merchant, funded/allocated money, processed a sale, then confirmed dashboard economy returned remaining `38.0`, 7-day spend `12.0`, daily rate `1.71`, and 2 buckets.
+  - Browser `/app` served the economy frame, hamburger actions, dashboard JavaScript, and dashboard CSS over DNS.
+  - DNS API ping returned `pong`.
+
+#### Android App Bundle Build Output
+
+- Updated `colepago-parents-app/build_both_apks.ps1`.
+- Release build script now generates both formats:
+  - APKs for direct install/testing
+  - Android App Bundles (`.aab`) for Google Play upload
+- Expected outputs:
+  - `build/app/outputs/flutter-apk/app-kids-release.apk`
+  - `build/app/outputs/bundle/kidsRelease/app-kids-release.aab`
+  - `build/app/outputs/flutter-apk/app-parents-release.apk`
+  - `build/app/outputs/bundle/parentsRelease/app-parents-release.aab`
+- Verification:
+  - PowerShell syntax check passed.
+  - Full Flutter build was not run during this change.
+
+#### Dense Browser Form Layout
+
+- Updated browser `/app` CSS so form fields in backend/browser panels auto-pack into as many columns as the screen can fit.
+- Kept mobile responsive behavior as single-column.
+- Full-width elements remain full-width:
+  - headings
+  - messages
+  - explanation blocks
+  - activity boxes
+  - dashboard heading/detail blocks
+  - action rows
+- Verification:
+  - DNS `/static/portal.css` served the new `auto-fit` form layout rules.
+
+#### Twilio SMS Channel
+
+- Added SMS support through Twilio using environment variables only.
+- Do not hardcode live Twilio credentials in source files.
+- Added `send_sms` helper in `whatsapp_utils.py`.
+- Added direct SMS endpoint:
+  - `POST /api/parent/{parent_id}/sms`
+- Added `sms` to escalation channels:
+  - default channels are now `whatsapp`, `sms`, `call`, and `email`
+- Updated `.env.example` with:
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+  - `TWILIO_SMS_FROM`
+  - `TWILIO_MESSAGING_SERVICE_SID`
+  - `TWILIO_WHATSAPP_FROM`
+  - `TWILIO_CALL_FROM`
+- Fixed Twilio number normalization so numbers already entered with `+` are not prefixed with country code again.
+- Verification:
+  - Python syntax check passed.
+  - Backend restarted on port `8010`.
+  - API ping returned `pong`.
+  - SMS endpoint smoke test returned expected `404 Parent profile not found` for a fake parent id, confirming the route is live without sending a real SMS.
+- Follow-up:
+  - Tightened phone normalization for profiles where `country_code` already contains the full phone number.
+  - Attempted SMS to parent id `4` with message `hey I fine`.
+  - Send failed because SMS sender is not configured:
+    - set `TWILIO_SMS_FROM`
+    - or set `TWILIO_MESSAGING_SERVICE_SID`
+  - After `.env` was configured, backend was restarted and SMS send to parent id `4` succeeded.
+  - Twilio SID returned: `SM44028e59816eb438a9ec7c800da3d425`.
+
+#### Twilio WhatsApp Content Templates
+
+- Added support for Twilio WhatsApp Content Template messages.
+- Added helper:
+  - `send_whatsapp_template`
+- Existing endpoint `POST /api/parent/{parent_id}/whatsapp` now supports either:
+  - free-text `message`
+  - template `content_sid` plus `content_variables`
+- `.env.example` now includes:
+  - `TWILIO_WHATSAPP_TEMPLATE_CONTENT_SID`
+- Verification:
+  - Python syntax check passed.
+  - Backend restarted on port `8010`.
+  - API ping returned `pong`.
+
+#### Message-Only Parent Alerts
+
+- Added generic message-only endpoint:
+  - `POST /api/parent/{parent_id}/message`
+- Supported channels:
+  - `whatsapp`
+  - `sms`
+- No voice call is attempted by this endpoint.
+- Escalation defaults changed to message-first only:
+  - default channels are now `whatsapp`, `sms`, and `email`
+  - `call` is only used if explicitly included in a request
+- Verification:
+  - Python syntax check passed.
+  - Backend restarted on port `8010`.
+  - API ping returned `pong`.
+  - Message endpoint smoke test returned expected `404 Parent profile not found` for fake parent id, confirming the route is live without sending a real message.
+
 ### 2026-05-09
 
 #### APK Build/Deploy Consistency Check
@@ -632,6 +1217,151 @@ School import notes:
   - `https://api.drsrv.net.ar/api`
   - `https://api.drsrv.net.ar/payments`
   - `https://api.drsrv.net.ar/webhooks`
+
+## 2026-05-11 - Direct Parent Phone Call Fallback
+
+- Added an explicit backend call endpoint:
+  - `POST /api/parent/{parent_id}/call`
+  - Calls are opt-in only; message endpoints still send WhatsApp/SMS and do not call.
+- Added a direct dial option in the real browser app at `/app`:
+  - dashboard menu item `Call parent phone`
+  - uses `tel:` with the stored parent profile mobile phone.
+- Added the same direct dial option to the parent APK dashboard menu and drawer.
+- Added Android `tel:` dial intent visibility for `url_launcher`.
+- Cached the last loaded parent dial number locally in the APK and browser app so the direct call action can still use it after a later backend/network failure.
+- Verified:
+  - backend syntax check passed
+  - `dart analyze` passed
+  - backend restarted on port `8010`
+  - `/api/ping` returned `pong`
+  - fake parent call route returned `404` without placing a real call
+  - served `/app` includes the call menu and `tel:` launcher
+
+## 2026-05-11 - Stripe Test PaymentIntent Backend
+
+- Confirmed `.env` contains Stripe test variables without printing secret values:
+  - `STRIPE_SECRET_KEY`
+  - `STRIPE_PUBLISHABLE_KEY`
+  - `STRIPE_WEBHOOK_SECRET`
+  - `STRIPE_CURRENCY`
+- Added pending/confirmed parent deposit lifecycle helpers in `services/payment_gateway.py`.
+- Added Stripe config endpoint:
+  - `GET /api/payments/stripe/config`
+- Added Stripe PaymentIntent creation endpoint:
+  - `POST /api/wallet/stripe/create-payment-intent`
+  - Creates a pending `ExternalPayment`.
+  - Returns `client_secret` for the app/browser payment UI.
+- Added Stripe webhook endpoint:
+  - `POST /api/webhooks/stripe`
+  - Confirms wallet deposits only on `payment_intent.succeeded`.
+  - Marks pending deposits failed on `payment_intent.payment_failed`.
+- Added payment lookup endpoint:
+  - `GET /api/payments/{payment_id}`
+- Wired browser `/app` money form to Stripe Elements:
+  - shows a card field when `Stripe card` is selected
+  - creates/confirms a PaymentIntent
+  - waits for webhook confirmation before applying child bucket allocation
+- Changed old `/api/wallet/fund` `stripe_card` path to reject direct wallet credit and point callers to PaymentIntent flow.
+- Verified:
+  - backend syntax check passed
+  - backend restarted on port `8010`
+  - `/api/ping` returned `pong`
+  - `/api/payments/stripe/config` returned currency and a publishable key flag
+  - served `/app` includes Stripe Elements script and card field
+  - creating a test PaymentIntent for `ARS 20,000` succeeded and created pending payment id `6`
+  - small `ARS 100` test amount was rejected by Stripe because it converted below the account minimum
+  - old direct Stripe fund route returned `400` instead of crediting money
+
+## 2026-05-11 - Admin-Only Configuration Menu
+
+- Added private admin detection from allowlisted owner email/user ids:
+  - `ADMIN_EMAILS`
+  - `ADMIN_USER_IDS`
+- Auth responses now include `is_admin` for browser visibility.
+- Added admin-only backend endpoints:
+  - `GET /api/admin/settings`
+  - `PUT /api/admin/settings`
+- Added runtime settings file:
+  - `config/admin_settings.json`
+  - ignored by Git as environment-specific configuration.
+- Added browser `/app` hidden admin menu/frame:
+  - visible only when `is_admin` is true
+  - controls fee percent, fee payer, currency, country, society profile, religion context, local policy notes, and merchant fee disclosure.
+- Connected purchase commission calculation to admin `fee_percent`.
+- Verified:
+  - backend syntax check passed
+  - backend restarted on port `8010`
+  - `/api/ping` returned `pong`
+  - owner user id can read/save admin settings
+  - request without admin user id returns `401`
+  - served `/app` includes hidden admin UI
+
+## 2026-05-11 - Browser Dark Theme
+
+- Added a light/dark theme toggle to the `/app` header.
+- Stores the selected theme in browser local storage under `colepago_theme`.
+- Added dark theme CSS variables for:
+  - page background
+  - panels
+  - form fields
+  - menus
+  - soft metric panels
+  - warning buckets
+  - focus and shadow colors
+- Verified:
+  - served `/app` includes the theme toggle
+  - backend `/api/ping` still returns `pong`
+
+## 2026-05-11 - Kid APK Background Picker
+
+- Added a kid-side background picker to the bucket screen.
+- The picker is opened from a palette icon in the kid app bar.
+- Built-in backgrounds:
+  - Sky
+  - Space
+  - Candy
+  - Jungle
+  - Arcade
+- The selected background is saved locally per kid device with `SharedPreferences`.
+- Verified:
+  - `dart format` completed
+  - `dart analyze` passed
+
+## 2026-05-11 - Browser Child Navigation Fix
+
+- Fixed browser `/app` child setup navigation:
+  - Previous/Next now remain enabled after the planned children are complete.
+  - Navigation controls were moved near the child frame title.
+- Reduced the child setup frame density:
+  - smaller grid columns
+  - smaller labels/inputs/buttons
+  - compact additional-activities layout
+- Verified:
+  - served `/app` contains the moved child navigation
+  - served JavaScript keeps child navigation enabled after completion
+  - served CSS contains compact child frame rules
+  - backend `/api/ping` returned `pong`
+
+## 2026-05-11 - Dashboard Accelerometer Graph
+
+- Added optional accelerometer fields to child location pings:
+  - `accel_x`
+  - `accel_y`
+  - `accel_z`
+- Added migration:
+  - `n4o5p6q7r8s9_add_accelerometer_to_location_pings.py`
+- Added graph-ready backend endpoint:
+  - `GET /api/child/{child_id}/accelerometer?limit=60`
+  - returns movement magnitude over time instead of raw x/y/z values.
+- Added a Movement graph to the parent dashboard kid section.
+- Fixed the dashboard kid selector so changing kids does not jump back to the first child while rendering.
+- Verified:
+  - backend syntax check passed
+  - migration applied
+  - backend restarted on port `8010`
+  - `/api/ping` returned `pong`
+  - served `/app` contains the accelerometer graph canvas
+  - public graph endpoint returns graph-ready samples payload
 
 ## Pending Items
 

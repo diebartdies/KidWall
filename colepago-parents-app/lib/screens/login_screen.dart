@@ -5,7 +5,7 @@ import 'forgot_password_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
-  final Function(String token, int parentId) onLoginSuccess;
+  final Function(String token, int userId, String role) onLoginSuccess;
   const LoginScreen({super.key, required this.onLoginSuccess});
 
   @override
@@ -20,6 +20,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   String? _error;
 
+  String? _validateEmail(String? value) {
+    final email = (value ?? '').trim();
+    if (email.isEmpty) return 'Enter email';
+    final valid = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
+    return valid ? null : 'Enter a valid email address';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -29,17 +36,20 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _tryAutoLogin() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth_token');
-    final parentId = prefs.getInt('parent_id');
-    if (token != null && parentId != null) {
+    final userId = prefs.getInt('user_id') ?? prefs.getInt('parent_id');
+    final role = prefs.getString('user_role') ?? 'parent';
+    if (token != null && userId != null) {
       _apiService.setToken(token);
-      widget.onLoginSuccess(token, parentId);
+      widget.onLoginSuccess(token, userId, role);
     }
   }
 
-  Future<void> _saveToken(String token, int parentId) async {
+  Future<void> _saveToken(String token, int userId, String role) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
-    await prefs.setInt('parent_id', parentId);
+    await prefs.setInt('user_id', userId);
+    await prefs.setInt('parent_id', userId);
+    await prefs.setString('user_role', role);
   }
 
   void _login() async {
@@ -54,12 +64,12 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordController.text,
       );
       final token = result['token'] ?? result['access_token'];
-      final parentId =
-          result['parent_id'] ?? result['id']; // Adjust key as needed
-      if (token != null && parentId != null) {
+      final userId = result['user_id'] ?? result['parent_id'] ?? result['id'];
+      final role = (result['role'] ?? 'parent').toString();
+      if (token != null && userId != null) {
         _apiService.setToken(token);
-        await _saveToken(token, parentId);
-        widget.onLoginSuccess(token, parentId);
+        await _saveToken(token, userId, role);
+        widget.onLoginSuccess(token, userId, role);
       } else {
         setState(() {
           _error = 'Invalid credentials';
@@ -78,65 +88,84 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Login')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Enter email' : null,
+      appBar: AppBar(title: const Text('ColePago Parents')),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Image.asset(
+                    'assets/branding/colepago_logo.png',
+                    height: 170,
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Manage family money with ColePago',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 24),
+                  TextFormField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: _validateEmail,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _passwordController,
+                    decoration: const InputDecoration(labelText: 'Password'),
+                    obscureText: true,
+                    validator: (value) => value == null || value.isEmpty
+                        ? 'Enter password'
+                        : null,
+                  ),
+                  const SizedBox(height: 24),
+                  if (_error != null) ...[
+                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                    const SizedBox(height: 12),
+                  ],
+                  _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ElevatedButton(
+                          onPressed: _login,
+                          child: const Text('Login'),
+                        ),
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => RegisterScreen(
+                            onRegisterSuccess: widget.onLoginSuccess,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('Don\'t have an account? Sign Up'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ForgotPasswordScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text('Forgot password?'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _passwordController,
-                decoration: const InputDecoration(labelText: 'Password'),
-                obscureText: true,
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Enter password' : null,
-              ),
-              const SizedBox(height: 24),
-              if (_error != null) ...[
-                Text(_error!, style: const TextStyle(color: Colors.red)),
-                const SizedBox(height: 12),
-              ],
-              _loading
-                  ? const CircularProgressIndicator()
-                  : ElevatedButton(
-                      onPressed: _login,
-                      child: const Text('Login'),
-                    ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => RegisterScreen(
-                        onRegisterSuccess: widget.onLoginSuccess,
-                      ),
-                    ),
-                  );
-                },
-                child: const Text('Don\'t have an account? Sign Up'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ForgotPasswordScreen(),
-                    ),
-                  );
-                },
-                child: const Text('Forgot password?'),
-              ),
-            ],
+            ),
           ),
         ),
       ),

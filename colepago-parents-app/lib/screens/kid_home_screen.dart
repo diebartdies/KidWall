@@ -1,337 +1,520 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '../../biometric_auth.dart';
+import '../api_service.dart';
 import '../utils/face_obscure.dart';
 
 class KidHomeScreen extends StatefulWidget {
-  const KidHomeScreen({super.key});
+  final String token;
+  final int kidId;
+
+  const KidHomeScreen({super.key, required this.token, required this.kidId});
 
   @override
   State<KidHomeScreen> createState() => _KidHomeScreenState();
 }
 
 class _KidHomeScreenState extends State<KidHomeScreen> {
-  bool _obscureSensitive = false;
-  bool _faceObscureEnabled =
-      true; // Configurable: set to false to disable feature
-  bool _authenticated = false;
-  Map<String, int> _buckets = {};
-  bool _loading = true;
-
-  // Parent-configurable allowed biometrics (should be loaded from backend/settings)
+  final ApiService _api = ApiService();
   final List<BiometricTypeOption> _allowedBiometrics = [
     BiometricTypeOption.fingerprint,
     BiometricTypeOption.face,
     BiometricTypeOption.iris,
   ];
 
+  bool _authenticated = false;
+  bool _loading = true;
+  bool _faceObscureEnabled = true;
+  bool _obscureSensitive = false;
+  List<Map<String, dynamic>> _buckets = [];
+  String _backgroundId = 'sky';
+
+  static const List<_KidBackground> _backgrounds = [
+    _KidBackground(
+      id: 'sky',
+      name: 'Sky',
+      icon: Icons.wb_sunny,
+      colors: [Color(0xFF7DD3FC), Color(0xFFFFF7AD)],
+    ),
+    _KidBackground(
+      id: 'space',
+      name: 'Space',
+      icon: Icons.rocket_launch,
+      colors: [Color(0xFF312E81), Color(0xFF7C3AED)],
+      darkText: false,
+    ),
+    _KidBackground(
+      id: 'candy',
+      name: 'Candy',
+      icon: Icons.icecream,
+      colors: [Color(0xFFFF8BC7), Color(0xFFFFD166)],
+    ),
+    _KidBackground(
+      id: 'jungle',
+      name: 'Jungle',
+      icon: Icons.park,
+      colors: [Color(0xFF34D399), Color(0xFFA7F3D0)],
+    ),
+    _KidBackground(
+      id: 'arcade',
+      name: 'Arcade',
+      icon: Icons.sports_esports,
+      colors: [Color(0xFF06B6D4), Color(0xFF2563EB)],
+      darkText: false,
+    ),
+  ];
+
   @override
   void initState() {
     super.initState();
+    _api.setToken(widget.token);
+    _loadBackground();
     _authenticate();
   }
 
+  _KidBackground get _selectedBackground => _backgrounds.firstWhere(
+    (background) => background.id == _backgroundId,
+    orElse: () => _backgrounds.first,
+  );
+
+  String get _backgroundPrefsKey => 'kidBackground:${widget.kidId}';
+
+  Future<void> _loadBackground() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_backgroundPrefsKey);
+    if (!mounted || saved == null) return;
+    if (_backgrounds.any((background) => background.id == saved)) {
+      setState(() => _backgroundId = saved);
+    }
+  }
+
+  Future<void> _saveBackground(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_backgroundPrefsKey, id);
+    if (!mounted) return;
+    setState(() => _backgroundId = id);
+  }
+
   Future<void> _authenticate() async {
-    final bioAuth = BiometricAuth();
-    // In production, fetch _allowedBiometrics from parent settings/backend
-    bool result = await bioAuth.authenticate(
+    final result = await BiometricAuth().authenticate(
       context,
       allowedMethods: _allowedBiometrics,
     );
     if (!mounted) return;
-    setState(() {
-      _authenticated = result;
-    });
-    if (result) {
-      await _fetchBuckets();
-    }
+    setState(() => _authenticated = result);
+    if (result) await _fetchBuckets();
   }
 
   Future<void> _fetchBuckets() async {
-    if (!mounted) return;
     setState(() => _loading = true);
-    // Replace with your actual kid ID and backend URL
-    final kidId = 456;
-    final response = await http.get(
-      Uri.parse('https://your-backend.com/wallet/kid/$kidId'),
-    );
-    if (!mounted) return;
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
+    try {
+      final buckets = await _api.getChildWalletBuckets(widget.kidId);
+      if (!mounted) return;
       setState(() {
-        _buckets = {for (var b in data['buckets']) b['name']: b['coins']};
+        _buckets = buckets;
         _loading = false;
       });
-    } else {
-      setState(() => _loading = false);
+    } catch (_) {
       if (!mounted) return;
+      setState(() => _loading = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to load buckets')));
+      ).showSnackBar(const SnackBar(content: Text('Failed to load buckets')));
     }
   }
 
-  Future<void> _spendCoins(String bucket) async {
-    final kidId = 456;
-    final merchantId = 789; // Replace with actual merchant ID
-    int maxAmount = _buckets[bucket] ?? 0;
-    int totalCoins = _buckets.values.fold(0, (a, b) => a + b);
-
-    final controller = TextEditingController();
-    final amount = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Spend coins from $bucket'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(labelText: 'Amount (max $totalCoins)'),
+  Future<void> _openSaleScanner(Map<String, dynamic> bucket) async {
+    final paid = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => KidSaleScannerScreen(
+          api: _api,
+          childId: widget.kidId,
+          bucketName: bucket['name']?.toString() ?? '',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              final value = int.tryParse(controller.text);
-              if (value != null && value > 0 && value <= totalCoins) {
-                Navigator.of(ctx).pop(value);
-              }
-            },
-            child: const Text('Spend'),
-          ),
-        ],
       ),
     );
-
-    if (amount != null) {
-      bool borrowed = false;
-      Map<String, int> borrowPlan = {};
-      if (amount > maxAmount) {
-        // Not enough in selected bucket, but enough in total
-        borrowed = true;
-        // Plan: take as much as possible from the selected bucket, then from buckets with highest balance
-        int needed = amount - maxAmount;
-        // Sort buckets by balance descending, skip the selected bucket
-        final sortedBuckets =
-            _buckets.entries
-                .where((e) => e.key != bucket && e.value > 0)
-                .toList()
-              ..sort((a, b) => b.value.compareTo(a.value));
-        borrowPlan[bucket] = maxAmount;
-        for (final entry in sortedBuckets) {
-          if (needed <= 0) break;
-          final take = entry.value >= needed ? needed : entry.value;
-          borrowPlan[entry.key] = take;
-          needed -= take;
-        }
-        // If for some reason not enough, abort
-        if (needed > 0) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Not enough coins in all buckets.')),
-          );
-          return;
-        }
-      }
-      final response = await http.post(
-        Uri.parse('https://your-backend.com/wallet/spend'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'kid_id': kidId,
-          'bucket': bucket,
-          'amount': amount,
-          'merchant_id': merchantId,
-          'allow_borrow': borrowed,
-          if (borrowed) 'borrow_plan': borrowPlan,
-        }),
-      );
-      if (!mounted) return;
-      if (response.statusCode == 200) {
-        if (borrowed) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Spent $amount coins (borrowed from other buckets). Parent will be notified. You will not be able to spend in the borrowing buckets until refilled.',
-              ),
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Spent $amount coins from $bucket!')),
-          );
-        }
-        await _fetchBuckets();
-      } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to spend coins')));
-      }
-    }
-  }
-
-  Future<void> _requestMoreMoney() async {
-    final kidId = 456; // Replace with actual kid ID
-    final response = await http.post(
-      Uri.parse('https://your-backend.com/wallet/request-more'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'kid_id': kidId,
-        'channels': ['whatsapp', 'email'],
-      }),
-    );
-    if (!mounted) return;
-    if (response.statusCode == 200) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Request sent to parent via WhatsApp and email.'),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to send request.')));
-    }
+    if (paid == true) await _fetchBuckets();
   }
 
   @override
   Widget build(BuildContext context) {
     if (!_authenticated) {
       return Scaffold(
-        body: Center(child: Text('Authentication required to use the app.')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock, size: 48),
+              const SizedBox(height: 12),
+              const Text('Secure access required'),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: _authenticate,
+                child: const Text('Try again'),
+              ),
+            ],
+          ),
+        ),
       );
     }
-    if (_loading) {
-      return Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    Widget content = Scaffold(
-      appBar: AppBar(title: const Text('What do you want to buy?')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    icon: Icon(Icons.add_alert),
-                    label: Text('Ask parent for more money'),
-                    onPressed: _requestMoreMoney,
-                  ),
-                ),
-                Switch(
-                  value: _faceObscureEnabled,
-                  onChanged: (v) {
-                    setState(() {
-                      _faceObscureEnabled = v;
-                      if (!v) _obscureSensitive = false;
-                    });
-                  },
-                  activeThumbColor: Colors.green,
-                  inactiveThumbColor: Colors.red,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                const SizedBox(width: 4),
-                Text('Hide info if not alone'),
-              ],
-            ),
-          ),
-          Expanded(
-            child: GridView.count(
-              crossAxisCount: 2,
-              padding: const EdgeInsets.all(24),
-              children: _buckets.entries.map((entry) {
-                final label = entry.key;
-                final coins = entry.value;
-                final color = _bucketColor(label);
-                final icon = _bucketIconData(label);
-                return _bucketIcon(label, icon, color, coins);
-              }).toList(),
-            ),
+
+    final background = _selectedBackground;
+    final content = Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Choose a bucket'),
+        backgroundColor: background.appBarColor,
+        foregroundColor: background.darkText ? Colors.black87 : Colors.white,
+        actions: [
+          IconButton(
+            tooltip: 'Change background',
+            icon: const Icon(Icons.palette),
+            onPressed: _showBackgroundPicker,
           ),
         ],
       ),
+      body: DecoratedBox(
+        decoration: background.decoration,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    child: Card(
+                      color: background.panelColor,
+                      child: SwitchListTile(
+                        title: const Text(
+                          'Hide info if another face is detected',
+                        ),
+                        value: _faceObscureEnabled,
+                        onChanged: (value) {
+                          setState(() {
+                            _faceObscureEnabled = value;
+                            if (!value) _obscureSensitive = false;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GridView.count(
+                      crossAxisCount: 2,
+                      padding: const EdgeInsets.all(16),
+                      children: _buckets.map((bucket) {
+                        final name = bucket['name']?.toString() ?? 'Bucket';
+                        final remaining = _asDouble(bucket['remaining']);
+                        return _bucketCard(name, remaining, bucket);
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              ),
+      ),
     );
-    if (_faceObscureEnabled) {
-      return FaceObscureDetector(
-        onFaceDetection: (obscure) {
-          if (_obscureSensitive != obscure) {
-            setState(() {
-              _obscureSensitive = obscure;
-            });
-          }
-        },
-        child: content,
-      );
-    } else {
-      return content;
-    }
+
+    if (!_faceObscureEnabled) return content;
+    return FaceObscureDetector(
+      onFaceDetection: (obscure) {
+        if (_obscureSensitive != obscure) {
+          setState(() => _obscureSensitive = obscure);
+        }
+      },
+      child: content,
+    );
   }
 
-  Widget _bucketIcon(String label, IconData icon, Color color, int coins) {
-    return Builder(
-      builder: (context) => GestureDetector(
-        onTap: () => _spendCoins(label),
-        child: Card(
-          color: Color.fromARGB(
-            (color.a * 255.0).round().clamp(0, 255),
-            (color.r * 0.8 * 255.0).round().clamp(0, 255),
-            (color.g * 0.8 * 255.0).round().clamp(0, 255),
-            (color.b * 0.8 * 255.0).round().clamp(0, 255),
-          ),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 64, color: Colors.white),
-                SizedBox(height: 16),
-                Text(
-                  obscureIfNeeded(label, _obscureSensitive),
-                  style: TextStyle(color: Colors.white, fontSize: 20),
+  Widget _bucketCard(
+    String name,
+    double remaining,
+    Map<String, dynamic> bucket,
+  ) {
+    final color = _bucketColor(name);
+    return Card(
+      color: color,
+      child: InkWell(
+        onTap: remaining <= 0 ? null : () => _openSaleScanner(bucket),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(_bucketIconData(name), size: 52, color: Colors.white),
+              const SizedBox(height: 12),
+              Text(
+                obscureIfNeeded(name, _obscureSensitive),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
-                SizedBox(height: 8),
-                Text(
-                  obscureIfNeeded('$coins coins', _obscureSensitive),
-                  style: TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                obscureIfNeeded(
+                  remaining.toStringAsFixed(2),
+                  _obscureSensitive,
                 ),
-              ],
-            ),
+                style: const TextStyle(color: Colors.white),
+              ),
+              const SizedBox(height: 8),
+              const Icon(Icons.qr_code_scanner, color: Colors.white),
+            ],
           ),
         ),
       ),
     );
   }
 
+  Future<void> _showBackgroundPicker() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pick a background',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 14),
+                GridView.count(
+                  shrinkWrap: true,
+                  crossAxisCount: 2,
+                  childAspectRatio: 2.6,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  children: _backgrounds.map((background) {
+                    final selected = background.id == _backgroundId;
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => Navigator.pop(context, background.id),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: background.colors),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: selected
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.transparent,
+                            width: 3,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              background.icon,
+                              color: background.darkText
+                                  ? Colors.black87
+                                  : Colors.white,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              background.name,
+                              style: TextStyle(
+                                color: background.darkText
+                                    ? Colors.black87
+                                    : Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (selected != null) await _saveBackground(selected);
+  }
+
+  double _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
   Color _bucketColor(String label) {
-    switch (label) {
-      case 'Snacks':
-        return Colors.orange;
-      case 'School Supplies':
-        return Colors.blue;
-      case 'Transport':
-        return Colors.green;
-      case 'Other':
-        return Colors.purple;
-      default:
-        return Colors.grey;
+    if (label.toLowerCase().contains('snack') ||
+        label.toLowerCase().contains('lunch')) {
+      return Colors.orange;
     }
+    if (label.toLowerCase().contains('book')) return Colors.indigo;
+    if (label.toLowerCase().contains('transport')) return Colors.green;
+    if (label.toLowerCase().contains('foto')) return Colors.purple;
+    return Colors.blueGrey;
   }
 
   IconData _bucketIconData(String label) {
-    switch (label) {
-      case 'Snacks':
-        return Icons.fastfood;
-      case 'School Supplies':
-        return Icons.school;
-      case 'Transport':
-        return Icons.directions_bus;
-      case 'Other':
-        return Icons.category;
-      default:
-        return Icons.account_balance_wallet;
+    if (label.toLowerCase().contains('snack') ||
+        label.toLowerCase().contains('lunch')) {
+      return Icons.fastfood;
     }
+    if (label.toLowerCase().contains('book')) return Icons.menu_book;
+    if (label.toLowerCase().contains('transport')) {
+      return Icons.directions_bus;
+    }
+    if (label.toLowerCase().contains('foto')) return Icons.print;
+    return Icons.account_balance_wallet;
+  }
+}
+
+class _KidBackground {
+  final String id;
+  final String name;
+  final IconData icon;
+  final List<Color> colors;
+  final bool darkText;
+
+  const _KidBackground({
+    required this.id,
+    required this.name,
+    required this.icon,
+    required this.colors,
+    this.darkText = true,
+  });
+
+  BoxDecoration get decoration {
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: colors,
+      ),
+    );
+  }
+
+  Color get appBarColor => colors.first.withAlpha(230);
+
+  Color get panelColor =>
+      darkText ? const Color(0xE6FFFFFF) : const Color(0xD91F2937);
+}
+
+class KidSaleScannerScreen extends StatefulWidget {
+  final ApiService api;
+  final int childId;
+  final String bucketName;
+
+  const KidSaleScannerScreen({
+    super.key,
+    required this.api,
+    required this.childId,
+    required this.bucketName,
+  });
+
+  @override
+  State<KidSaleScannerScreen> createState() => _KidSaleScannerScreenState();
+}
+
+class _KidSaleScannerScreenState extends State<KidSaleScannerScreen> {
+  final MobileScannerController _scannerController = MobileScannerController();
+  bool _paying = false;
+
+  @override
+  void dispose() {
+    _scannerController.dispose();
+    super.dispose();
+  }
+
+  void _onDetect(BarcodeCapture capture) {
+    if (_paying) return;
+    String? payload;
+    for (final barcode in capture.barcodes) {
+      final value = barcode.rawValue;
+      if (value != null && value.trim().isNotEmpty) {
+        payload = value.trim();
+        break;
+      }
+    }
+    if (payload == null) return;
+    _pay(payload);
+  }
+
+  Future<void> _pay(String scannedPayload) async {
+    final payload = scannedPayload.trim();
+    if (payload.isEmpty) return;
+    setState(() => _paying = true);
+    await _scannerController.stop();
+    try {
+      await widget.api.payMerchantSale(
+        childId: widget.childId,
+        bucketName: widget.bucketName,
+        salePayload: payload,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Payment processed')));
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+      await _scannerController.start();
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Scan sale - ${widget.bucketName}')),
+      body: Column(
+        children: [
+          Expanded(
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: const BoxDecoration(color: Colors.black87),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  MobileScanner(
+                    controller: _scannerController,
+                    onDetect: _onDetect,
+                  ),
+                  if (_paying)
+                    Container(
+                      color: Colors.black54,
+                      alignment: Alignment.center,
+                      child: const CircularProgressIndicator(),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Icon(Icons.qr_code_scanner),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _paying
+                        ? 'Processing secure payment...'
+                        : 'Point the camera at the merchant ColePago QR.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

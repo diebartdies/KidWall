@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../api_service.dart';
 
 class RegisterScreen extends StatefulWidget {
-  final Function(String token, int parentId) onRegisterSuccess;
+  final Function(String token, int userId, String role) onRegisterSuccess;
   const RegisterScreen({super.key, required this.onRegisterSuccess});
 
   @override
@@ -19,6 +19,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _error;
   String _role = 'parent';
 
+  String? _validateEmail(String? value) {
+    final email = (value ?? '').trim();
+    if (email.isEmpty) return 'Enter email';
+    final valid = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
+    return valid ? null : 'Enter a valid email address';
+  }
+
   void _register() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() {
@@ -33,11 +40,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _role,
       );
       final token = result['token'] ?? result['access_token'];
-      final parentId =
-          result['parent_id'] ?? result['id']; // Adjust key as needed
-      if (token != null && parentId != null) {
+      final userId = result['user_id'] ?? result['parent_id'] ?? result['id'];
+      final role = (result['role'] ?? _role).toString();
+      if (token != null && userId != null) {
         _apiService.setToken(token);
-        widget.onRegisterSuccess(token, parentId);
+        widget.onRegisterSuccess(token, userId, role);
       } else {
         setState(() {
           _error = 'Registration failed';
@@ -45,7 +52,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
     } catch (e) {
       setState(() {
-        _error = 'Registration failed';
+        _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
     setState(() {
@@ -88,8 +95,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
               TextFormField(
                 controller: _emailController,
                 decoration: const InputDecoration(labelText: 'Email'),
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Enter email' : null,
+                keyboardType: TextInputType.emailAddress,
+                validator: _validateEmail,
               ),
               const SizedBox(height: 16),
               TextFormField(
