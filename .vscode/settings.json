@@ -1,3 +1,11 @@
 {
-    "cmake.sourceDirectory": "D:/kidwall/colepago-parents-app/linux"
+    "cmake.sourceDirectory": "D:/kidwall/colepago-parents-app/linux",
+    "accessibility.signals.chatUserActionRequired": {
+        "sound": "on"
+    },
+    "accessibility.signals.chatResponseReceived": {
+        "sound": "on"
+    },
+    "git.addAICoAuthor": "chatAndAgent",
+    "git.alwaysShowStagedChangesResourceGroup": true
 }

@@ -5,6 +5,7 @@ plugins {
 }
 
 android {
+    namespace = "com.example.colepago_parents_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "28.2.13676358"
 
@@ -27,13 +28,11 @@ android {
             dimension = "app"
             applicationId = "colepago.kids"
             manifestPlaceholders["appLabel"] = "colepago-kids"
-            namespace = "colepago.kids"
         }
         create("parents") {
             dimension = "app"
             applicationId = "colepago.parents"
             manifestPlaceholders["appLabel"] = "colepago-parents"
-            namespace = "colepago.parents"
         }
     }
 

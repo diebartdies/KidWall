@@ -1363,6 +1363,87 @@ School import notes:
   - served `/app` contains the accelerometer graph canvas
   - public graph endpoint returns graph-ready samples payload
 
+### 2026-05-12
+
+#### Android APK Crash-On-Launch — Three Sequential Fixes
+
+All three fixes below were applied to the Flutter multi-flavor Android app at `colepago-parents-app/`. Both flavors (`kids` and `parents`) crashed immediately on launch without showing any UI. Three root causes were identified and fixed in sequence.
+
+##### Fix 1 — FlutterFragmentActivity Required By local_auth
+
+- `local_auth ^3.0.1` requires the host activity to extend `FlutterFragmentActivity`, not `FlutterActivity`.
+- Flutter auto-registers all plugins via `GeneratedPluginRegistrant` at startup, so the crash occurred before any UI was shown.
+- Changed:
+  - `android/app/src/main/kotlin/com/example/colepago_parents_app/MainActivity.kt`
+  - Base class changed from `io.flutter.embedding.android.FlutterActivity` to `io.flutter.embedding.android.FlutterFragmentActivity`.
+- Current content after fix:
+  ```kotlin
+  package com.example.colepago_parents_app
+  import io.flutter.embedding.android.FlutterFragmentActivity
+  class MainActivity : FlutterFragmentActivity()
+  ```
+
+##### Fix 2 — INTERNET Permission Missing From Release Manifest
+
+- The `INTERNET` permission was declared only in `android/app/src/debug/AndroidManifest.xml`.
+- Release builds merged only from `android/app/src/main/AndroidManifest.xml`, so release APKs had no network access.
+- Changed:
+  - `android/app/src/main/AndroidManifest.xml`
+  - Added `<uses-permission android:name="android.permission.INTERNET"/>` as the first `uses-permission` entry, before `USE_BIOMETRIC`, `USE_FINGERPRINT`, and `CAMERA`.
+
+##### Fix 3 — Namespace Must Be Top-Level In android {} Block
+
+- Logcat showed `ClassNotFoundException: Didn't find class "com.example.colepago_parents_app.MainActivity"` for both `colepago.kids` and `colepago.parents` processes.
+- Root cause: `namespace` was set inside `productFlavors` (per-flavor), which is not valid Android Gradle Plugin (Kotlin DSL) syntax.
+  - `namespace` is a top-level `android {}` property.
+  - Without a valid top-level namespace, AGP cannot correctly compile and link the Kotlin class into the APK DEX.
+- Changed:
+  - `android/app/build.gradle.kts`
+  - Added `namespace = "com.example.colepago_parents_app"` at the top of the `android {}` block.
+  - Removed `namespace` entries from both `kids` and `parents` product flavor definitions.
+- Current state of relevant block:
+  ```kotlin
+  android {
+      namespace = "com.example.colepago_parents_app"
+      compileSdk = flutter.compileSdkVersion
+      ndkVersion = "28.2.13676358"
+      ...
+      productFlavors {
+          create("kids") {
+              dimension = "app"
+              applicationId = "colepago.kids"
+              manifestPlaceholders["appLabel"] = "colepago-kids"
+          }
+          create("parents") {
+              dimension = "app"
+              applicationId = "colepago.parents"
+              manifestPlaceholders["appLabel"] = "colepago-parents"
+          }
+      }
+  }
+  ```
+- Note: `applicationId` per flavor still controls distinct package names on the device (`colepago.kids` / `colepago.parents`). `namespace` only controls where AGP looks for compiled Kotlin classes; it must match the `package` declaration in `MainActivity.kt`.
+
+##### Files Changed
+
+- `android/app/src/main/kotlin/com/example/colepago_parents_app/MainActivity.kt`
+- `android/app/src/main/AndroidManifest.xml`
+- `android/app/build.gradle.kts`
+
+##### Verification
+
+- All three source edits applied and confirmed with no parse errors.
+- Old APKs uninstalled from device:
+  - `adb uninstall colepago.kids`
+  - `adb uninstall colepago.parents`
+- Rebuild pending: run `build_both_apks.ps1` and reinstall both APKs.
+
+##### Pending
+
+- Rebuild both APKs with `.\build_both_apks.ps1` from `colepago-parents-app/`.
+- Reinstall and retest on device.
+- If still failing, capture filtered logcat: `adb logcat -s flutter colepago.kids colepago.parents AndroidRuntime`.
+
 ## Pending Items
 
 - Rotate exposed SMTP/mail password after testing.
